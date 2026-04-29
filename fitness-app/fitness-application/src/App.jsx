@@ -180,52 +180,39 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
 - Nivel: ${profile.experiencia}
 - Lesiones/limitaciones: ${profile.lesiones || "ninguna"}
 
-Responde SOLO con un JSON válido con esta estructura exacta (sin texto extra, sin markdown):
-{
-  "days": [
-    {
-      "id": 1,
-      "nombre": "Nombre del día",
-      "tag": "etiqueta corta",
-      "color": "#hexcolor",
-      "exercises": [
-        {
-          "id": 1,
-          "nombre": "Nombre ejercicio",
-          "series": 3,
-          "reps": "10-12",
-          "descripcion": "Indicaciones técnicas detalladas considerando las lesiones del usuario.",
-          "peso_sugerido": 10,
-          "youtube_query": "exercise name tutorial"
-        }
-      ]
-    }
-  ]
-}
+Responde SOLO con un JSON válido con esta estructura exacta (sin texto extra, sin markdown, sin backticks):
+{"days":[{"id":1,"nombre":"Nombre del día","tag":"etiqueta corta","color":"#6C63FF","exercises":[{"id":1,"nombre":"Nombre ejercicio","series":3,"reps":"10-12","descripcion":"Indicaciones técnicas detalladas considerando las lesiones del usuario.","peso_sugerido":10}]}]}
 
-Reglas:
-- 4 días distintos por grupo muscular
-- 5-7 ejercicios por día
+Reglas ESTRICTAS:
+- Exactamente 4 días distintos por grupo muscular
+- Entre 5 y 7 ejercicios por día
 - Adapta TODOS los ejercicios a las lesiones indicadas
-- Colores: día 1 #6C63FF, día 2 #00C896, día 3 #FF6B6B, día 4 #FFB347
-- IDs de ejercicios: 1-99 día1, 100-199 día2, 200-299 día3, 300-399 día4`;
+- Colores EXACTOS: día 1 usa color #6C63FF, día 2 usa #00C896, día 3 usa #FF6B6B, día 4 usa #FFB347
+- IDs de ejercicios: día1 del 1 al 99, día2 del 100 al 199, día3 del 200 al 299, día4 del 300 al 399
+- Responde ÚNICAMENTE con el JSON, sin ningún texto antes ni después`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer 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",
+        },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
           max_tokens: 3000,
-          messages: [{ role: "user", content: prompt }]
+          temperature: 0.7,
         })
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
+      if (!res.ok) throw new Error(data.error?.message || "Error de Groq");
+      const text = data.choices?.[0]?.message?.content || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
+      if (!parsed.days || parsed.days.length === 0) throw new Error("Respuesta inválida");
       setRoutine(parsed);
     } catch (e) {
-      setError("Error generando rutina. Intenta de nuevo.");
+      setError("Error generando rutina: " + e.message);
       console.error(e);
     } finally { setLoading(false); }
   }
