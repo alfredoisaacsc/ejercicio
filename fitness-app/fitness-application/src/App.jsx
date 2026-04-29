@@ -418,7 +418,6 @@ function DayScreen({ day, onBack, onSelectExercise, logs, onToggle, onWeightChan
     </div>
   );
 }
-
 // ─── Exercise Screen ──────────────────────────────────────────────────────────
 function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange }) {
   const [idx, setIdx] = useState(startIdx);
@@ -577,7 +576,6 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
     </div>
   );
 }
-
 // ─── Main App ─────────────────────────────────────────────────────────────────
 const DEFAULT_DAYS = [
   { id: 1, nombre: "Pecho + Hombro", tag: "empuje", color: "#6C63FF", orden: 1, exercises: [
@@ -611,7 +609,6 @@ const DEFAULT_DAYS = [
     { id: 23, nombre: "Curl de muñeca", series: 3, reps: "15-20", descripcion: "Antebrazo apoyado en el banco, solo mueve la muñeca.", peso_sugerido: 8, orden: 5 },
   ]},
 ];
-
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
