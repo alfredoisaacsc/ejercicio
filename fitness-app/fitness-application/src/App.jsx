@@ -172,36 +172,34 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
   async function generate() {
     setLoading(true); setError("");
     try {
-      const prompt = `Eres un entrenador personal experto. Genera una rutina de gimnasio semanal de 4 días para este usuario:
-- Nombre: ${profile.nombre}
-- Edad: ${profile.edad} años
-- Peso: ${profile.peso} kg
-- Estatura: ${profile.estatura} cm
-- Nivel: ${profile.experiencia}
-- Lesiones/limitaciones: ${profile.lesiones || "ninguna"}
+      const prompt = `Genera una rutina de gimnasio de 4 días en JSON para:
+Nombre:${profile.nombre}, Edad:${profile.edad}, Peso:${profile.peso}kg, Estatura:${profile.estatura}cm, Nivel:${profile.experiencia}, Lesiones:${profile.lesiones || "ninguna"}
 
-Responde SOLO con un JSON válido con esta estructura exacta (sin texto extra, sin markdown, sin backticks):
-{"days":[{"id":1,"nombre":"Nombre del día","tag":"etiqueta corta","color":"#6C63FF","exercises":[{"id":1,"nombre":"Nombre ejercicio","series":3,"reps":"10-12","descripcion":"Indicaciones técnicas detalladas considerando las lesiones del usuario.","peso_sugerido":10}]}]}
+RESPONDE SOLO CON JSON VÁLIDO, sin texto extra, sin markdown:
+{"days":[{"id":1,"nombre":"Pecho y Hombro","tag":"empuje","color":"#6C63FF","exercises":[{"id":1,"nombre":"Press banca","series":4,"reps":"10-12","descripcion":"Baja la barra al pecho controlado.","peso_sugerido":20}]},{"id":2,"nombre":"Pierna","tag":"tren inferior","color":"#00C896","exercises":[...]},{"id":3,"nombre":"Espalda","tag":"jalón","color":"#FF6B6B","exercises":[...]},{"id":4,"nombre":"Brazos","tag":"aislamiento","color":"#FFB347","exercises":[...]}]}
 
-Reglas ESTRICTAS:
-- Exactamente 4 días distintos por grupo muscular
-- Entre 5 y 7 ejercicios por día
-- Adapta TODOS los ejercicios a las lesiones indicadas
-- Colores EXACTOS: día 1 usa color #6C63FF, día 2 usa #00C896, día 3 usa #FF6B6B, día 4 usa #FFB347
-- IDs de ejercicios: día1 del 1 al 99, día2 del 100 al 199, día3 del 200 al 299, día4 del 300 al 399
-- Responde ÚNICAMENTE con el JSON, sin ningún texto antes ni después`;
+REGLAS:
+- Exactamente 4 días, exactamente 5 ejercicios por día (no más)
+- Colores fijos: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
+- IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
+- descripcion máximo 80 caracteres
+- Adapta ejercicios a las lesiones
+- SOLO JSON, nada más`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer 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",
+          "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
         },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 3000,
-          temperature: 0.7,
+          messages: [
+            { role: "system", content: "Eres un entrenador personal. Respondes ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown, sin backticks." },
+            { role: "user", content: prompt }
+          ],
+          max_tokens: 4000,
+          temperature: 0.5,
         })
       });
       const data = await res.json();
