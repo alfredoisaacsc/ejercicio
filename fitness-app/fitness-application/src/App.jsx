@@ -117,14 +117,53 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ─── Profile ──────────────────────────────────────────────────────────────────
-function ProfileScreen({ user, existing, onDone }) {
-  const [form, setForm] = useState(existing || { nombre: "", peso: "", estatura: "", edad: "", experiencia: "principiante", lesiones: "" });
+// ─── Change Password ──────────────────────────────────────────────────────────
+function ChangePasswordScreen({ onBack }) {
+  const [pass, setPass] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+
+  async function save() {
+    if (pass.length < 6) return setError("La contraseña debe tener al menos 6 caracteres.");
+    if (pass !== confirm) return setError("Las contraseñas no coinciden.");
+    setLoading(true); setError(""); setMsg("");
+    const { error: e } = await sb.auth.updateUser({ password: pass });
+    setLoading(false);
+    if (e) setError(e.message);
+    else { setMsg("Contraseña actualizada correctamente."); setPass(""); setConfirm(""); }
+  }
+
+  return (
+    <div style={S.screen}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "52px 28px 40px" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 13, padding: 0, marginBottom: 24, textAlign: "left" }}>← Volver</button>
+        <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#6C63FF", fontWeight: 600, marginBottom: 8 }}>SEGURIDAD</div>
+        <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 28px" }}>Cambiar contraseña</h2>
+        <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>NUEVA CONTRASEÑA</div>
+        <input style={S.input} type="password" placeholder="Mínimo 6 caracteres" value={pass} onChange={e => setPass(e.target.value)} />
+        <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>CONFIRMAR CONTRASEÑA</div>
+        <input style={{ ...S.input, marginBottom: 20 }} type="password" placeholder="Repite la contraseña" value={confirm} onChange={e => setConfirm(e.target.value)} />
+        {error && <div style={{ color: "#FF6B6B", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "#FF6B6B11", borderRadius: 10 }}>{error}</div>}
+        {msg && <div style={{ color: "#00C896", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "#00C89611", borderRadius: 10 }}>{msg}</div>}
+        <button style={S.btnPrimary()} onClick={save} disabled={loading}>{loading ? "Guardando..." : "Actualizar contraseña"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Profile ──────────────────────────────────────────────────────────────────
+function ProfileScreen({ user, existing, onDone, onChangePassword }) {
+  const [form, setForm] = useState(existing || { nombre: "", peso: "", estatura: "", edad: "", sexo: "masculino", experiencia: "principiante", lesiones: "" });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   async function save() {
-    setLoading(true);
+    if (!form.nombre.trim()) return setError("El nombre es obligatorio.");
+    if (!form.sexo) return setError("Selecciona tu sexo.");
+    setError(""); setLoading(true);
     await sb.from("profiles").upsert({ id: user.id, ...form, peso: +form.peso, estatura: +form.estatura, edad: +form.edad });
     setLoading(false);
     onDone(form);
@@ -136,12 +175,26 @@ function ProfileScreen({ user, existing, onDone }) {
         <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#6C63FF", fontWeight: 600, marginBottom: 8 }}>PERFIL</div>
         <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 6px" }}>Cuéntanos sobre ti</h2>
         <p style={{ fontSize: 13, color: "#555", marginBottom: 28 }}>La IA usará estos datos para generar tu rutina personalizada.</p>
+
+        {/* Sexo */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 8, letterSpacing: "0.08em" }}>SEXO</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[{ val: "masculino", label: "♂ Hombre" }, { val: "femenino", label: "♀ Mujer" }].map(op => (
+              <button key={op.val} onClick={() => f("sexo", op.val)} style={{ flex: 1, padding: "12px 4px", borderRadius: 10, fontSize: 14, cursor: "pointer", fontWeight: 600, background: form.sexo === op.val ? "#6C63FF" : "#111118", color: form.sexo === op.val ? "#fff" : "#555", border: `1px solid ${form.sexo === op.val ? "#6C63FF" : "#222"}` }}>
+                {op.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {[{ label: "Nombre", key: "nombre", type: "text", ph: "Tu nombre" }, { label: "Peso (kg)", key: "peso", type: "number", ph: "75" }, { label: "Estatura (cm)", key: "estatura", type: "number", ph: "175" }, { label: "Edad", key: "edad", type: "number", ph: "30" }].map(({ label, key, type, ph }) => (
           <div key={key} style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>{label.toUpperCase()}</div>
             <input style={S.input} type={type} placeholder={ph} value={form[key]} onChange={e => f(key, e.target.value)} />
           </div>
         ))}
+
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 8, letterSpacing: "0.08em" }}>EXPERIENCIA</div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -152,11 +205,16 @@ function ProfileScreen({ user, existing, onDone }) {
             ))}
           </div>
         </div>
-        <div style={{ marginBottom: 28 }}>
+
+        <div style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>LESIONES / LIMITACIONES</div>
           <textarea style={{ ...S.input, minHeight: 80, resize: "vertical", fontFamily: "inherit" }} placeholder="Ej: lesión en hombro izquierdo..." value={form.lesiones} onChange={e => f("lesiones", e.target.value)} />
         </div>
-        <button style={S.btnPrimary()} onClick={save} disabled={loading}>{loading ? "Guardando..." : "Guardar"}</button>
+
+        {error && <div style={{ color: "#FF6B6B", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "#FF6B6B11", borderRadius: 10 }}>{error}</div>}
+        <button style={{ ...S.btnPrimary(), marginBottom: 10 }} onClick={save} disabled={loading}>{loading ? "Guardando..." : "Guardar"}</button>
+        <button onClick={onChangePassword} style={{ ...S.btnGhost, color: "#555", borderColor: "#222" }}>🔒 Cambiar contraseña</button>
+        <div style={{ height: 20 }} />
       </div>
     </div>
   );
@@ -173,17 +231,18 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
     setLoading(true); setError("");
     try {
       const prompt = `Genera una rutina de gimnasio de 4 días en JSON para:
-Nombre:${profile.nombre}, Edad:${profile.edad}, Peso:${profile.peso}kg, Estatura:${profile.estatura}cm, Nivel:${profile.experiencia}, Lesiones:${profile.lesiones || "ninguna"}
+Nombre:${profile.nombre}, Sexo:${profile.sexo || "masculino"}, Edad:${profile.edad}, Peso:${profile.peso}kg, Estatura:${profile.estatura}cm, Nivel:${profile.experiencia}, Lesiones:${profile.lesiones || "ninguna"}
 
 RESPONDE SOLO CON JSON VÁLIDO, sin texto extra, sin markdown:
-{"days":[{"id":1,"nombre":"Pecho y Hombro","tag":"empuje","color":"#6C63FF","exercises":[{"id":1,"nombre":"Press banca","series":4,"reps":"10-12","descripcion":"Baja la barra al pecho controlado.","peso_sugerido":20}]},{"id":2,"nombre":"Pierna","tag":"tren inferior","color":"#00C896","exercises":[...]},{"id":3,"nombre":"Espalda","tag":"jalón","color":"#FF6B6B","exercises":[...]},{"id":4,"nombre":"Brazos","tag":"aislamiento","color":"#FFB347","exercises":[...]}]}
+{"days":[{"id":1,"nombre":"Pecho y Hombro","tag":"empuje","color":"#6C63FF","exercises":[{"id":1,"nombre":"Press banca","series":4,"reps":"10-12","descripcion":"Descripción técnica obligatoria de al menos 60 caracteres con indicaciones de ejecución correcta.","peso_sugerido":20}]},{"id":2,"nombre":"Pierna","tag":"tren inferior","color":"#00C896","exercises":[...]},{"id":3,"nombre":"Espalda","tag":"jalón","color":"#FF6B6B","exercises":[...]},{"id":4,"nombre":"Brazos","tag":"aislamiento","color":"#FFB347","exercises":[...]}]}
 
-REGLAS:
-- Exactamente 4 días, exactamente 5 ejercicios por día (no más)
-- Colores fijos: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
+REGLAS ESTRICTAS:
+- Exactamente 4 días, exactamente 5 ejercicios por día
+- Adapta los ejercicios al sexo: ${profile.sexo === "femenino" ? "mujer, enfoca en glúteos, core y tren inferior con pesos moderados" : "hombre, enfoca en hipertrofia y fuerza"}
+- Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
 - IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
-- descripcion máximo 80 caracteres
-- Adapta ejercicios a las lesiones
+- descripcion es OBLIGATORIA, mínimo 80 caracteres, máximo 120, con técnica de ejecución
+- Adapta ejercicios a las lesiones: ${profile.lesiones || "ninguna"}
 - SOLO JSON, nada más`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -448,6 +507,8 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   if (!ex) return null;
   const ytId = YOUTUBE_IDS[ex.nombre] || ex.youtube_id;
   const ytValid = ytId && ytId.length > 5 && !ytId.includes("-");
+  // Fallback image via Unsplash/Pexels search by exercise name
+  const fallbackImg = `https://source.unsplash.com/400x225/?gym,${encodeURIComponent(ex.nombre)},exercise`;
 
   return (
     <div style={{ ...S.screen, background: "#0a0a10" }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -471,17 +532,12 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
           <div style={{ fontSize: 14, color: "#555" }}>{ex.series} series · {ex.reps} repeticiones</div>
         </div>
 
-        {/* Video section */}
-        {ytValid ? (
-          <div style={{ marginBottom: 20 }}>
-            {showVideo ? (
+        {/* Video / Image section */}
+        <div style={{ marginBottom: 20 }}>
+          {ytValid ? (
+            showVideo ? (
               <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#000" }}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`}
-                  style={{ width: "100%", height: "100%", border: "none" }}
-                  allow="autoplay; encrypted-media"
-                  allowFullScreen
-                />
+                <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} style={{ width: "100%", height: "100%", border: "none" }} allow="autoplay; encrypted-media" allowFullScreen />
               </div>
             ) : (
               <div onClick={() => setShowVideo(true)} style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e", cursor: "pointer" }}>
@@ -493,22 +549,51 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
                 </div>
                 <div style={{ position: "absolute", bottom: 10, left: 12, fontSize: 11, color: "#aaa" }}>Toca para ver video</div>
               </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ ...S.card, marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: color + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🎬</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>Sin video</div>
-              <div style={{ fontSize: 11, color: "#444" }}>Puedes agregar el ID de YouTube</div>
+            )
+          ) : (
+            // Fallback: image from Unsplash
+            <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e" }}>
+              <img
+                src={fallbackImg}
+                alt={ex.nombre}
+                style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.6 }}
+                onError={e => { e.target.style.display = "none"; }}
+              />
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 28 }}>🏋️</span>
+                <span style={{ fontSize: 11, color: "#888" }}>Imagen de referencia</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Description */}
+          {/* Edit video/image link */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button
+              onClick={() => {
+                const ytInput = prompt("Pega el ID de YouTube (ej: dQw4w9WgXcQ)\nO deja vacío para usar imagen:");
+                if (ytInput !== null) {
+                  // Save to localStorage as quick override (in production save to DB)
+                  const key = `yt_override_${ex.id}`;
+                  if (ytInput.trim()) localStorage.setItem(key, ytInput.trim());
+                  else localStorage.removeItem(key);
+                  window.location.reload();
+                }
+              }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#444", textDecoration: "underline" }}
+            >
+              {ytValid ? "✎ cambiar video" : "✎ agregar video de YouTube"}
+            </button>
+          </div>
+        </div>
+
+        {/* Description — always shown, fallback if empty */}
         <div style={{ ...S.card, marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: "#444", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 8 }}>INDICACIONES</div>
-          <p style={{ fontSize: 14, color: "#888", lineHeight: 1.7, margin: 0 }}>{ex.descripcion}</p>
+          <p style={{ fontSize: 14, color: "#888", lineHeight: 1.7, margin: 0 }}>
+            {ex.descripcion && ex.descripcion.trim()
+              ? ex.descripcion
+              : `Realiza el movimiento de forma controlada. Mantén la postura correcta durante todo el ejercicio. Respira de forma constante y evita movimientos bruscos.`}
+          </p>
         </div>
 
         {/* Series — CLICKABLE */}
@@ -518,21 +603,13 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
             {Array.from({ length: ex.series }).map((_, i) => {
               const done = activeSeries.includes(i);
               return (
-                <button key={i} onClick={() => toggleSerie(i)} style={{
-                  padding: "10px 18px", borderRadius: 99, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s",
-                  background: done ? color : "transparent",
-                  color: done ? (["#FFB347", "#00C896"].includes(color) ? "#000" : "#fff") : color,
-                  border: `1.5px solid ${done ? color : color + "55"}`,
-                  transform: done ? "scale(0.97)" : "scale(1)",
-                }}>
+                <button key={i} onClick={() => toggleSerie(i)} style={{ padding: "10px 18px", borderRadius: 99, fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.15s", background: done ? color : "transparent", color: done ? (["#FFB347", "#00C896"].includes(color) ? "#000" : "#fff") : color, border: `1.5px solid ${done ? color : color + "55"}`, transform: done ? "scale(0.97)" : "scale(1)" }}>
                   {done ? "✓" : ""} Serie {i + 1}
                 </button>
               );
             })}
           </div>
-          {activeSeries.length > 0 && (
-            <div style={{ fontSize: 12, color: "#555", marginTop: 8 }}>{activeSeries.length} de {ex.series} series completadas</div>
-          )}
+          {activeSeries.length > 0 && <div style={{ fontSize: 12, color: "#555", marginTop: 8 }}>{activeSeries.length} de {ex.series} series completadas</div>}
         </div>
 
         {/* Weight control */}
@@ -603,7 +680,7 @@ export default function App() {
   const [days, setDays] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [appScreen, setAppScreen] = useState("home"); // home | day | exercise | profile | aiRoutine
+  const [appScreen, setAppScreen] = useState("home"); // home | day | exercise | profile | aiRoutine | changePassword
   const [selectedDay, setSelectedDay] = useState(null);
   const [startExIdx, setStartExIdx] = useState(0);
 
@@ -657,7 +734,8 @@ export default function App() {
 
   if (loading) return <div style={S.screen}><Spinner /></div>;
   if (!session) return <LoginScreen onLogin={() => {}} />;
-  if (appScreen === "profile") return <ProfileScreen user={session.user} existing={profile} onDone={p => { setProfile(p); setAppScreen("home"); loadAll(); }} />;
+  if (appScreen === "changePassword") return <ChangePasswordScreen onBack={() => setAppScreen("profile")} />;
+  if (appScreen === "profile") return <ProfileScreen user={session.user} existing={profile} onDone={p => { setProfile(p); setAppScreen("home"); loadAll(); }} onChangePassword={() => setAppScreen("changePassword")} />;
   if (appScreen === "aiRoutine") return <AIRoutineScreen profile={profile} onDone={saveAIRoutine} onSkip={() => setAppScreen("home")} />;
 
   if (appScreen === "exercise" && selectedDay) return (
