@@ -155,7 +155,7 @@ function ChangePasswordScreen({ onBack }) {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 function ProfileScreen({ user, existing, onDone, onChangePassword }) {
-  const [form, setForm] = useState(existing || { nombre: "", peso: "", estatura: "", edad: "", sexo: "masculino", experiencia: "principiante", lesiones: "" });
+  const [form, setForm] = useState(existing || { nombre: "", peso: "", estatura: "", edad: "", sexo: "masculino", experiencia: "principiante", lesiones: "", equipo: [], objetivo: "masa_muscular", preferencias: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -208,7 +208,49 @@ function ProfileScreen({ user, existing, onDone, onChangePassword }) {
 
         <div style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>LESIONES / LIMITACIONES</div>
-          <textarea style={{ ...S.input, minHeight: 80, resize: "vertical", fontFamily: "inherit" }} placeholder="Ej: lesión en hombro izquierdo..." value={form.lesiones} onChange={e => f("lesiones", e.target.value)} />
+          <textarea style={{ ...S.input, minHeight: 70, resize: "none", fontFamily: "inherit", marginBottom: 0 }} placeholder="Ej: lesión en hombro izquierdo, rodilla derecha..." value={form.lesiones} onChange={e => f("lesiones", e.target.value)} />
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>EQUIPO DISPONIBLE</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {["Mancuernas", "Barra", "Máquinas", "Bandas elásticas", "Peso corporal", "Kettlebell", "TRX", "Poleas"].map(eq => {
+              const sel = (form.equipo || []).includes(eq);
+              return (
+                <button key={eq} onClick={() => { const cur = form.equipo || []; f("equipo", sel ? cur.filter(e => e !== eq) : [...cur, eq]); }}
+                  style={{ padding: "7px 12px", borderRadius: 99, fontSize: 12, cursor: "pointer", fontWeight: 500, background: sel ? "#6C63FF22" : "#111118", color: sel ? "#6C63FF" : "#555", border: `1px solid ${sel ? "#6C63FF" : "#222"}` }}>
+                  {eq}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8, marginTop: 16 }}>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 8, letterSpacing: "0.08em" }}>OBJETIVO PRINCIPAL</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {[
+              { val: "masa_muscular", label: "💪 Masa muscular" },
+              { val: "bajar_peso", label: "🔥 Bajar de peso" },
+              { val: "tonificar", label: "✦ Tonificar" },
+              { val: "resistencia", label: "🏃 Resistencia" },
+              { val: "fuerza", label: "⚡ Fuerza" },
+              { val: "flexibilidad", label: "🧘 Flexibilidad" },
+            ].map(op => {
+              const sel = form.objetivo === op.val;
+              return (
+                <button key={op.val} onClick={() => f("objetivo", op.val)}
+                  style={{ padding: "8px 14px", borderRadius: 99, fontSize: 12, cursor: "pointer", fontWeight: 500, background: sel ? "#6C63FF" : "#111118", color: sel ? "#fff" : "#555", border: `1px solid ${sel ? "#6C63FF" : "#222"}` }}>
+                  {op.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8, marginTop: 16 }}>
+          <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>OTRAS PREFERENCIAS (opcional)</div>
+          <textarea style={{ ...S.input, minHeight: 70, resize: "none", fontFamily: "inherit", marginBottom: 0 }} placeholder="Ej: prefiero no hacer sentadillas, me gustan los ejercicios funcionales..." value={form.preferencias} onChange={e => f("preferencias", e.target.value)} />
         </div>
 
         {error && <div style={{ color: "#FF6B6B", fontSize: 13, marginBottom: 12, padding: "10px 14px", background: "#FF6B6B11", borderRadius: 10 }}>{error}</div>}
@@ -230,20 +272,40 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
   async function generate() {
     setLoading(true); setError("");
     try {
-      const prompt = `Genera una rutina de gimnasio de 4 días en JSON para:
-Nombre:${profile.nombre}, Sexo:${profile.sexo || "masculino"}, Edad:${profile.edad}, Peso:${profile.peso}kg, Estatura:${profile.estatura}cm, Nivel:${profile.experiencia}, Lesiones:${profile.lesiones || "ninguna"}
+      const equipoStr = (profile.equipo || []).length > 0 ? (profile.equipo || []).join(", ") : "gimnasio completo";
+      const objetivoLabels = { masa_muscular: "ganar masa muscular e hipertrofia", bajar_peso: "bajar de peso y quemar grasa", tonificar: "tonificar y definir el cuerpo", resistencia: "mejorar resistencia cardiovascular", fuerza: "ganar fuerza máxima", flexibilidad: "mejorar flexibilidad y movilidad" };
+      const objetivoStr = objetivoLabels[profile.objetivo] || "mejorar condición física general";
 
-RESPONDE SOLO CON JSON VÁLIDO, sin texto extra, sin markdown:
-{"days":[{"id":1,"nombre":"Pecho y Hombro","tag":"empuje","color":"#6C63FF","exercises":[{"id":1,"nombre":"Press banca","series":4,"reps":"10-12","descripcion":"Descripción técnica obligatoria de al menos 60 caracteres con indicaciones de ejecución correcta.","peso_sugerido":20}]},{"id":2,"nombre":"Pierna","tag":"tren inferior","color":"#00C896","exercises":[...]},{"id":3,"nombre":"Espalda","tag":"jalón","color":"#FF6B6B","exercises":[...]},{"id":4,"nombre":"Brazos","tag":"aislamiento","color":"#FFB347","exercises":[...]}]}
+      const prompt = `Eres un entrenador personal experto. Crea una rutina de gimnasio de 4 días COMPLETAMENTE personalizada para:
 
-REGLAS ESTRICTAS:
+DATOS DEL USUARIO:
+- Nombre: ${profile.nombre}
+- Sexo: ${profile.sexo || "masculino"}
+- Edad: ${profile.edad} años
+- Peso: ${profile.peso} kg
+- Estatura: ${profile.estatura} cm
+- Nivel: ${profile.experiencia}
+- Objetivo principal: ${objetivoStr}
+- Equipo disponible: ${equipoStr}
+- Lesiones/limitaciones: ${profile.lesiones || "ninguna"}
+- Preferencias adicionales: ${profile.preferencias || "ninguna"}
+
+INSTRUCCIONES CLAVE:
+1. Elige ejercicios que se puedan hacer CON EL EQUIPO DISPONIBLE solamente
+2. Adapta intensidad, volumen y tipo de ejercicio al OBJETIVO (${objetivoStr})
+3. Evita completamente los ejercicios que afecten las LESIONES mencionadas
+4. Ajusta los pesos sugeridos al nivel y datos físicos del usuario
+5. ${profile.sexo === "femenino" ? "Para mujer: prioriza glúteos, core y piernas. Pesos moderados con más repeticiones." : "Para hombre: prioriza hipertrofia de tren superior e inferior equilibrado."}
+
+RESPONDE SOLO CON JSON VÁLIDO sin texto extra ni markdown:
+{"days":[{"id":1,"nombre":"nombre del día","tag":"etiqueta","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Indicación técnica detallada de cómo ejecutar el ejercicio correctamente incluyendo postura y respiración.","peso_sugerido":20}]}]}
+
+REGLAS JSON ESTRICTAS:
 - Exactamente 4 días, exactamente 5 ejercicios por día
-- Adapta los ejercicios al sexo: ${profile.sexo === "femenino" ? "mujer, enfoca en glúteos, core y tren inferior con pesos moderados" : "hombre, enfoca en hipertrofia y fuerza"}
-- Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
-- IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
-- descripcion es OBLIGATORIA, mínimo 80 caracteres, máximo 120, con técnica de ejecución
-- Adapta ejercicios a las lesiones: ${profile.lesiones || "ninguna"}
-- SOLO JSON, nada más`;
+- Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347  
+- IDs ejercicios: día1=1-5, día2=101-105, día3=201-205, día4=301-305
+- descripcion OBLIGATORIA entre 80-150 caracteres con técnica de ejecución
+- SOLO JSON, sin texto antes ni después`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -463,6 +525,86 @@ function DayScreen({ day, onBack, onSelectExercise, logs, onToggle, onWeightChan
   );
 }
 
+// ─── Media Fallback — asks Groq for a YouTube ID ─────────────────────────────
+function MediaFallback({ exNombre, exId, color }) {
+  const [ytId, setYtId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showVideo, setShowVideo] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    // Check localStorage cache first
+    const cached = localStorage.getItem(`yt_ai_${exId}`);
+    if (cached) { setYtId(cached === "none" ? null : cached); setLoading(false); return; }
+
+    async function findVideo() {
+      try {
+        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: "Eres un experto en fitness. Responde SOLO con el ID de YouTube (11 caracteres), nada más. Si no sabes uno concreto y real, responde exactamente: none" },
+              { role: "user", content: `Dame el ID de YouTube de un video tutorial en español del ejercicio de gimnasio: "${exNombre}". Solo el ID de 11 caracteres, sin texto extra.` }
+            ],
+            max_tokens: 20,
+            temperature: 0,
+          })
+        });
+        const data = await res.json();
+        const id = (data.choices?.[0]?.message?.content || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+        if (id && id.length === 11 && id !== "none") {
+          localStorage.setItem(`yt_ai_${exId}`, id);
+          setYtId(id);
+        } else {
+          localStorage.setItem(`yt_ai_${exId}`, "none");
+          setYtId(null);
+        }
+      } catch {
+        setFailed(true);
+      } finally { setLoading(false); }
+    }
+    findVideo();
+  }, [exId, exNombre]);
+
+  if (loading) return (
+    <div style={{ borderRadius: 14, aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+      <Spinner color={color} size={24} />
+      <div style={{ fontSize: 11, color: "#444" }}>Buscando video...</div>
+    </div>
+  );
+
+  if (ytId) return (
+    showVideo ? (
+      <div style={{ borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#000" }}>
+        <iframe src={`https://www.youtube.com/embed/${ytId}?autoplay=1&controls=1&rel=0`} style={{ width: "100%", height: "100%", border: "none" }} allow="autoplay; encrypted-media" allowFullScreen />
+      </div>
+    ) : (
+      <div onClick={() => setShowVideo(true)} style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e", cursor: "pointer" }}>
+        <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt={exNombre}
+          style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.7 }}
+          onError={() => setYtId(null)}
+        />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(0,0,0,0.7)", border: `2px solid ${color}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 20, marginLeft: 3 }}>▶</span>
+          </div>
+        </div>
+        <div style={{ position: "absolute", bottom: 10, left: 12, fontSize: 11, color: "#aaa" }}>Sugerido por IA · toca para ver</div>
+      </div>
+    )
+  );
+
+  // Final fallback: icon
+  return (
+    <div style={{ borderRadius: 14, aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+      <span style={{ fontSize: 36 }}>🏋️</span>
+      <span style={{ fontSize: 12, color: "#444" }}>Sin video disponible</span>
+    </div>
+  );
+}
+
 // ─── Exercise Screen ──────────────────────────────────────────────────────────
 function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange }) {
   const [idx, setIdx] = useState(startIdx);
@@ -505,10 +647,8 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   }
 
   if (!ex) return null;
-  const ytId = YOUTUBE_IDS[ex.nombre] || ex.youtube_id;
-  const ytValid = ytId && ytId.length > 5 && !ytId.includes("-");
-  // Fallback image via Unsplash/Pexels search by exercise name
-  const fallbackImg = `https://source.unsplash.com/400x225/?gym,${encodeURIComponent(ex.nombre)},exercise`;
+  const ytId = YOUTUBE_IDS[ex.nombre] || ex.youtube_id || (typeof localStorage !== "undefined" && localStorage.getItem(`yt_override_${ex.id}`));
+  const ytValid = ytId && ytId.length > 5 && !["dips-fondos","wrist-curl"].includes(ytId);
 
   return (
     <div style={{ ...S.screen, background: "#0a0a10" }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -551,28 +691,15 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
               </div>
             )
           ) : (
-            // Fallback: image from Unsplash
-            <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e" }}>
-              <img
-                src={fallbackImg}
-                alt={ex.nombre}
-                style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.6 }}
-                onError={e => { e.target.style.display = "none"; }}
-              />
-              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 28 }}>🏋️</span>
-                <span style={{ fontSize: 11, color: "#888" }}>Imagen de referencia</span>
-              </div>
-            </div>
+            <MediaFallback exNombre={ex.nombre} exId={ex.id} color={color} />
           )}
 
-          {/* Edit video/image link */}
+          {/* Edit video link */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
             <button
               onClick={() => {
-                const ytInput = prompt("Pega el ID de YouTube (ej: dQw4w9WgXcQ)\nO deja vacío para usar imagen:");
+                const ytInput = window.prompt(`Pega el ID de YouTube para "${ex.nombre}"\nEj: dQw4w9WgXcQ\n(deja vacío para quitar el video)`);
                 if (ytInput !== null) {
-                  // Save to localStorage as quick override (in production save to DB)
                   const key = `yt_override_${ex.id}`;
                   if (ytInput.trim()) localStorage.setItem(key, ytInput.trim());
                   else localStorage.removeItem(key);
@@ -586,13 +713,11 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
           </div>
         </div>
 
-        {/* Description — always shown, fallback if empty */}
+        {/* Description */}
         <div style={{ ...S.card, marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: "#444", fontWeight: 600, letterSpacing: "0.1em", marginBottom: 8 }}>INDICACIONES</div>
           <p style={{ fontSize: 14, color: "#888", lineHeight: 1.7, margin: 0 }}>
-            {ex.descripcion && ex.descripcion.trim()
-              ? ex.descripcion
-              : `Realiza el movimiento de forma controlada. Mantén la postura correcta durante todo el ejercicio. Respira de forma constante y evita movimientos bruscos.`}
+            {ex.descripcion?.trim() || "Realiza el movimiento de forma controlada. Mantén la postura correcta durante todo el ejercicio y respira de forma constante."}
           </p>
         </div>
 
