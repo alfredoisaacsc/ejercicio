@@ -155,7 +155,21 @@ function ChangePasswordScreen({ onBack }) {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 function ProfileScreen({ user, existing, onDone, onChangePassword }) {
-  const [form, setForm] = useState(existing || { nombre: "", peso: "", estatura: "", edad: "", sexo: "masculino", experiencia: "principiante", lesiones: "", equipo: [], objetivo: "masa_muscular", preferencias: "" });
+  const [form, setForm] = useState(() => {
+    const base = existing || {};
+    return {
+      nombre: base.nombre || "",
+      peso: base.peso || "",
+      estatura: base.estatura || "",
+      edad: base.edad || "",
+      sexo: base.sexo || "masculino",
+      experiencia: base.experiencia || "principiante",
+      lesiones: base.lesiones || "",
+      equipo: Array.isArray(base.equipo) ? base.equipo : (base.equipo ? base.equipo.split(",").map(e => e.trim()).filter(Boolean) : []),
+      objetivo: base.objetivo || "masa_muscular",
+      preferencias: base.preferencias || "",
+    };
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -164,7 +178,8 @@ function ProfileScreen({ user, existing, onDone, onChangePassword }) {
     if (!form.nombre.trim()) return setError("El nombre es obligatorio.");
     if (!form.sexo) return setError("Selecciona tu sexo.");
     setError(""); setLoading(true);
-    await sb.from("profiles").upsert({ id: user.id, ...form, peso: +form.peso, estatura: +form.estatura, edad: +form.edad });
+    const toSave = { ...form, peso: +form.peso, estatura: +form.estatura, edad: +form.edad, equipo: (form.equipo || []).join(",") };
+    await sb.from("profiles").upsert({ id: user.id, ...toSave });
     setLoading(false);
     onDone(form);
   }
@@ -272,7 +287,8 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
   async function generate() {
     setLoading(true); setError("");
     try {
-      const equipoStr = (profile.equipo || []).length > 0 ? (profile.equipo || []).join(", ") : "gimnasio completo";
+      const equipoArr = Array.isArray(profile.equipo) ? profile.equipo : (profile.equipo ? profile.equipo.split(",").map(e => e.trim()).filter(Boolean) : []);
+      const equipoStr = equipoArr.length > 0 ? equipoArr.join(", ") : "gimnasio completo";
       const objetivoLabels = { masa_muscular: "ganar masa muscular e hipertrofia", bajar_peso: "bajar de peso y quemar grasa", tonificar: "tonificar y definir el cuerpo", resistencia: "mejorar resistencia cardiovascular", fuerza: "ganar fuerza máxima", flexibilidad: "mejorar flexibilidad y movilidad" };
       const objetivoStr = objetivoLabels[profile.objetivo] || "mejorar condición física general";
 
