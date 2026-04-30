@@ -289,38 +289,54 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
     try {
       const equipoArr = Array.isArray(profile.equipo) ? profile.equipo : (profile.equipo ? profile.equipo.split(",").map(e => e.trim()).filter(Boolean) : []);
       const equipoStr = equipoArr.length > 0 ? equipoArr.join(", ") : "gimnasio completo";
+      const soloEquipo = equipoArr.length > 0;
       const objetivoLabels = { masa_muscular: "ganar masa muscular e hipertrofia", bajar_peso: "bajar de peso y quemar grasa", tonificar: "tonificar y definir el cuerpo", resistencia: "mejorar resistencia cardiovascular", fuerza: "ganar fuerza máxima", flexibilidad: "mejorar flexibilidad y movilidad" };
       const objetivoStr = objetivoLabels[profile.objetivo] || "mejorar condición física general";
 
-      const prompt = `Eres un entrenador personal experto. Crea una rutina de gimnasio de 4 días COMPLETAMENTE personalizada para:
+      // Build equipment-specific exercise guidance
+      const equipoGuia = soloEquipo ? `
+RESTRICCIÓN CRÍTICA DE EQUIPO — ESTO ES LO MÁS IMPORTANTE:
+El usuario SOLO tiene acceso a: ${equipoStr}.
+PROHIBIDO usar cualquier máquina de gimnasio (polea, prensa, jalón, etc.) a menos que esté explícitamente en la lista.
+PROHIBIDO sugerir equipamiento que NO esté en la lista anterior.
+Ejemplos de ejercicios PERMITIDOS según el equipo:
+${equipoArr.includes("Mancuernas") ? "- Mancuernas: press, curl, remo, extensiones, elevaciones, sentadilla goblet" : ""}
+${equipoArr.includes("Barra") ? "- Barra: press banca, peso muerto, sentadilla, remo, dominadas con barra" : ""}
+${equipoArr.includes("Bandas elásticas") ? "- Bandas: jalón con banda, curl con banda, face pull, glúteo con banda, rotaciones" : ""}
+${equipoArr.includes("Peso corporal") ? "- Peso corporal: flexiones, fondos, sentadillas, zancadas, plancha, burpees" : ""}
+${equipoArr.includes("Kettlebell") ? "- Kettlebell: swing, goblet squat, press, remo, snatch" : ""}
+${equipoArr.includes("TRX") ? "- TRX: remo en suspensión, flexiones TRX, zancadas, core" : ""}
+${equipoArr.includes("Máquinas") ? "- Máquinas: todas las máquinas de gimnasio disponibles" : ""}
+${equipoArr.includes("Poleas") ? "- Poleas: jalón, polea baja, face pull, extensión tríceps, curl" : ""}
+Si un ejercicio requiere equipo que NO está en la lista, SUSTITÚYELO por uno equivalente con el equipo disponible.` : "El usuario tiene acceso a gimnasio completo con todas las máquinas y equipos.";
+
+      const prompt = `Eres un entrenador personal experto. Crea una rutina de gimnasio de 4 días personalizada.
 
 DATOS DEL USUARIO:
 - Nombre: ${profile.nombre}
 - Sexo: ${profile.sexo || "masculino"}
-- Edad: ${profile.edad} años
-- Peso: ${profile.peso} kg
-- Estatura: ${profile.estatura} cm
+- Edad: ${profile.edad} años, Peso: ${profile.peso}kg, Estatura: ${profile.estatura}cm
 - Nivel: ${profile.experiencia}
-- Objetivo principal: ${objetivoStr}
-- Equipo disponible: ${equipoStr}
-- Lesiones/limitaciones: ${profile.lesiones || "ninguna"}
-- Preferencias adicionales: ${profile.preferencias || "ninguna"}
+- Objetivo: ${objetivoStr}
+- Lesiones: ${profile.lesiones || "ninguna"}
+- Preferencias: ${profile.preferencias || "ninguna"}
 
-INSTRUCCIONES CLAVE:
-1. Elige ejercicios que se puedan hacer CON EL EQUIPO DISPONIBLE solamente
-2. Adapta intensidad, volumen y tipo de ejercicio al OBJETIVO (${objetivoStr})
-3. Evita completamente los ejercicios que afecten las LESIONES mencionadas
-4. Ajusta los pesos sugeridos al nivel y datos físicos del usuario
-5. ${profile.sexo === "femenino" ? "Para mujer: prioriza glúteos, core y piernas. Pesos moderados con más repeticiones." : "Para hombre: prioriza hipertrofia de tren superior e inferior equilibrado."}
+${equipoGuia}
+
+INSTRUCCIONES:
+1. ${soloEquipo ? `SOLO usa ejercicios con: ${equipoStr}. NINGÚN otro equipo.` : "Usa cualquier equipo de gimnasio."}
+2. Adapta al objetivo: ${objetivoStr}
+3. Evita ejercicios que afecten: ${profile.lesiones || "ninguna limitación"}
+4. ${profile.sexo === "femenino" ? "Mujer: prioriza glúteos, core y piernas con más repeticiones." : "Hombre: equilibra tren superior e inferior para hipertrofia."}
 
 RESPONDE SOLO CON JSON VÁLIDO sin texto extra ni markdown:
-{"days":[{"id":1,"nombre":"nombre del día","tag":"etiqueta","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Indicación técnica detallada de cómo ejecutar el ejercicio correctamente incluyendo postura y respiración.","peso_sugerido":20}]}]}
+{"days":[{"id":1,"nombre":"nombre del día","tag":"etiqueta","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Técnica detallada de ejecución con postura y respiración correcta durante el movimiento.","peso_sugerido":20}]}]}
 
-REGLAS JSON ESTRICTAS:
+REGLAS JSON:
 - Exactamente 4 días, exactamente 5 ejercicios por día
-- Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347  
-- IDs ejercicios: día1=1-5, día2=101-105, día3=201-205, día4=301-305
-- descripcion OBLIGATORIA entre 80-150 caracteres con técnica de ejecución
+- Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
+- IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
+- descripcion OBLIGATORIA 80-150 caracteres
 - SOLO JSON, sin texto antes ni después`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
