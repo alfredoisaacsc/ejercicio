@@ -870,61 +870,52 @@ export default function App() {
       sb.from("workout_days").select("*, exercises(*)").order("orden"),
       sb.from("exercise_logs").select("*").eq("user_id", uid),
     ]);
-    if (prof) setProfile(prof); else setAppScreen("profile");
-    setDays((daysData || DEFAULT_DAYS).map(d => ({ ...d, exercises: (d.exercises || []).sort((a, b) => a.orden - b.orden) })));
+
+    if (prof) {
+      setProfile(prof);
+      // Si el usuario tiene rutina IA guardada, usarla en lugar de la estándar
+      if (prof.rutina_ia) {
+        try {
+          const rutina = JSON.parse(prof.rutina_ia);
+          setDays(rutina);
+          setLoading(false);
+          if (logsData) setLogs(logsData);
+          return;
+        } catch {}
+      }
+    } else {
+      setAppScreen("profile");
+    }
+
+    // Rutina estándar desde Supabase o fallback local
+    setDays((daysData || DEFAULT_DAYS).map(d => ({
+      ...d,
+      exercises: (d.exercises || []).sort((a, b) => a.orden - b.orden)
+    })));
     if (logsData) setLogs(logsData);
     setLoading(false);
   }
 
   async function saveAIRoutine(routine) {
     if (!session?.user) return;
-    const uid = session.user.id;
 
-    // Save each day and its exercises to Supabase with user_id prefix to distinguish from default
-    // We use negative IDs for user-custom days to avoid conflicts with default days
-    const userDayOffset = 1000; // user days start at 1001, 1002...
-    const userExOffset = 10000; // user exercises start at 10001...
-
-    const daysToSave = routine.days.map((d, di) => ({
-      id: userDayOffset + di + 1,
-      nombre: d.nombre,
-      tag: d.tag,
-      color: d.color,
-      orden: di + 1,
-      user_id: uid,
-    }));
-
-    const exercisesToSave = routine.days.flatMap((d, di) =>
-      (d.exercises || []).map((ex, ei) => ({
-        id: userExOffset + (di * 100) + ei + 1,
-        day_id: userDayOffset + di + 1,
-        nombre: ex.nombre,
-        series: ex.series,
-        reps: ex.reps,
-        descripcion: ex.descripcion,
-        peso_sugerido: ex.peso_sugerido || 0,
-        orden: ei + 1,
-      }))
-    );
-
-    // Delete old user-custom days/exercises first
-    await sb.from("exercises").delete().gte("id", userExOffset + 1);
-    await sb.from("workout_days").delete().gte("id", userDayOffset + 1);
-
-    // Insert new ones
-    await sb.from("workout_days").insert(daysToSave);
-    await sb.from("exercises").insert(exercisesToSave);
-
-    // Update local state
-    setDays(routine.days.map((d, di) => ({
+    // Asignar IDs únicos a los ejercicios para el tracking de logs
+    const daysWithIds = routine.days.map((d, di) => ({
       ...d,
-      id: userDayOffset + di + 1,
+      id: 1000 + di + 1,
       exercises: (d.exercises || []).map((ex, ei) => ({
         ...ex,
-        id: userExOffset + (di * 100) + ei + 1,
+        id: 10000 + (di * 100) + ei + 1,
         orden: ei + 1,
       }))
-    })));
+    }));
+
+    // Guardar como JSON en el perfil del usuario
+    await sb.from("profiles").update({
+      rutina_ia: JSON.stringify(daysWithIds)
+    }).eq("id", session.user.id);
+
+    setDays(daysWithIds);
     setAppScreen("home");
   }
 
