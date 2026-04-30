@@ -626,6 +626,20 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   const [idx, setIdx] = useState(startIdx);
   const [activeSeries, setActiveSeries] = useState([]);
   const [showVideo, setShowVideo] = useState(false);
+  const [ytOverrides, setYtOverrides] = useState(() => {
+    // Load all overrides from localStorage on mount
+    const overrides = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith("yt_override_")) {
+          const id = k.replace("yt_override_", "");
+          overrides[id] = localStorage.getItem(k);
+        }
+      }
+    } catch {}
+    return overrides;
+  });
   const touchStart = useRef(null);
   const color = day.color || DAY_COLORS[day.id] || "#6C63FF";
   const exercises = day.exercises || [];
@@ -636,10 +650,7 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   const isDone = log?.completado || false;
   const weight = log?.peso_usado ?? ex?.peso_sugerido ?? 0;
 
-  // Reset series state when exercise changes
   useEffect(() => { setActiveSeries([]); setShowVideo(false); }, [idx]);
-
-  // Load saved series from log
   useEffect(() => {
     if (log?.series_completadas) {
       try { setActiveSeries(JSON.parse(log.series_completadas)); } catch {}
@@ -649,8 +660,7 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   function toggleSerie(i) {
     const next = activeSeries.includes(i) ? activeSeries.filter(s => s !== i) : [...activeSeries, i];
     setActiveSeries(next);
-    const allDone = next.length === ex.series;
-    onToggle(ex.id, allDone, weight, JSON.stringify(next));
+    onToggle(ex.id, next.length === ex.series, weight, JSON.stringify(next));
   }
 
   function handleTouchStart(e) { touchStart.current = e.touches[0].clientX; }
@@ -662,9 +672,23 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
     touchStart.current = null;
   }
 
+  function handleEditVideo() {
+    const ytInput = window.prompt(`ID de YouTube para "${ex.nombre}"\nEj: dQw4w9WgXcQ\n(deja vacío para quitar el video)`);
+    if (ytInput === null) return; // cancelled
+    const key = `yt_override_${ex.id}`;
+    if (ytInput.trim()) {
+      localStorage.setItem(key, ytInput.trim());
+      setYtOverrides(prev => ({ ...prev, [String(ex.id)]: ytInput.trim() }));
+    } else {
+      localStorage.removeItem(key);
+      setYtOverrides(prev => { const n = { ...prev }; delete n[String(ex.id)]; return n; });
+    }
+    setShowVideo(false);
+  }
+
   if (!ex) return null;
-  const ytId = YOUTUBE_IDS[ex.nombre] || ex.youtube_id || (typeof localStorage !== "undefined" && localStorage.getItem(`yt_override_${ex.id}`));
-  const ytValid = ytId && ytId.length > 5 && !["dips-fondos","wrist-curl"].includes(ytId);
+  const ytId = ytOverrides[String(ex.id)] || YOUTUBE_IDS[ex.nombre] || ex.youtube_id;
+  const ytValid = ytId && ytId.length > 5 && !["dips-fondos", "wrist-curl"].includes(ytId);
 
   return (
     <div style={{ ...S.screen, background: "#0a0a10" }} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -712,18 +736,7 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
 
           {/* Edit video link */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-            <button
-              onClick={() => {
-                const ytInput = window.prompt(`Pega el ID de YouTube para "${ex.nombre}"\nEj: dQw4w9WgXcQ\n(deja vacío para quitar el video)`);
-                if (ytInput !== null) {
-                  const key = `yt_override_${ex.id}`;
-                  if (ytInput.trim()) localStorage.setItem(key, ytInput.trim());
-                  else localStorage.removeItem(key);
-                  window.location.reload();
-                }
-              }}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#444", textDecoration: "underline" }}
-            >
+            <button onClick={handleEditVideo} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#444", textDecoration: "underline" }}>
               {ytValid ? "✎ cambiar video" : "✎ agregar video de YouTube"}
             </button>
           </div>
