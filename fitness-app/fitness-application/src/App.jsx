@@ -557,19 +557,27 @@ function DayScreen({ day, onBack, onSelectExercise, logs, onToggle, onWeightChan
   );
 }
 
-// ─── Media Fallback — asks Groq for a YouTube ID ─────────────────────────────
-function MediaFallback({ exNombre, exId, color }) {
+// ─── Media Fallback — asks Groq for a YouTube ID, saves to Supabase ──────────
+function MediaFallback({ exNombre, exId, color, userId }) {
   const [ytId, setYtId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showVideo, setShowVideo] = useState(false);
-  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    // Check localStorage cache first
-    const cached = localStorage.getItem(`yt_ai_${exId}`);
-    if (cached) { setYtId(cached === "none" ? null : cached); setLoading(false); return; }
-
     async function findVideo() {
+      // 1. Check Supabase first
+      const { data } = await sb.from("exercise_videos")
+        .select("youtube_id")
+        .eq("exercise_id", exId)
+        .maybeSingle();
+
+      if (data?.youtube_id) {
+        setYtId(data.youtube_id === "none" ? null : data.youtube_id);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Ask Groq
       try {
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -577,25 +585,26 @@ function MediaFallback({ exNombre, exId, color }) {
           body: JSON.stringify({
             model: "llama-3.3-70b-versatile",
             messages: [
-              { role: "system", content: "Eres un experto en fitness. Responde SOLO con el ID de YouTube (11 caracteres), nada más. Si no sabes uno concreto y real, responde exactamente: none" },
-              { role: "user", content: `Dame el ID de YouTube de un video tutorial en español del ejercicio de gimnasio: "${exNombre}". Solo el ID de 11 caracteres, sin texto extra.` }
+              { role: "system", content: "Eres un experto en fitness. Responde SOLO con el ID de YouTube (exactamente 11 caracteres), nada más. Si no conoces uno real y válido, responde exactamente: none" },
+              { role: "user", content: `ID de YouTube de un video tutorial en español del ejercicio: "${exNombre}". Solo el ID, sin texto.` }
             ],
-            max_tokens: 20,
-            temperature: 0,
+            max_tokens: 20, temperature: 0,
           })
         });
-        const data = await res.json();
-        const id = (data.choices?.[0]?.message?.content || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-        if (id && id.length === 11 && id !== "none") {
-          localStorage.setItem(`yt_ai_${exId}`, id);
-          setYtId(id);
-        } else {
-          localStorage.setItem(`yt_ai_${exId}`, "none");
-          setYtId(null);
-        }
-      } catch {
-        setFailed(true);
-      } finally { setLoading(false); }
+        const groqData = await res.json();
+        const id = (groqData.choices?.[0]?.message?.content || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+        const validId = id && id.length === 11 && id !== "none" ? id : null;
+
+        // 3. Save to Supabase
+        await sb.from("exercise_videos").upsert({
+          exercise_id: exId,
+          youtube_id: validId || "none",
+          source: "ai",
+        }, { onConflict: "exercise_id" });
+
+        setYtId(validId);
+      } catch { setYtId(null); }
+      finally { setLoading(false); }
     }
     findVideo();
   }, [exId, exNombre]);
@@ -628,7 +637,6 @@ function MediaFallback({ exNombre, exId, color }) {
     )
   );
 
-  // Final fallback: icon
   return (
     <div style={{ borderRadius: 14, aspectRatio: "16/9", background: "#111118", border: "1px solid #1e1e2e", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
       <span style={{ fontSize: 36 }}>🏋️</span>
@@ -642,20 +650,22 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   const [idx, setIdx] = useState(startIdx);
   const [activeSeries, setActiveSeries] = useState([]);
   const [showVideo, setShowVideo] = useState(false);
-  const [ytOverrides, setYtOverrides] = useState(() => {
-    // Load all overrides from localStorage on mount
-    const overrides = {};
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith("yt_override_")) {
-          const id = k.replace("yt_override_", "");
-          overrides[id] = localStorage.getItem(k);
-        }
+  const [ytOverrides, setYtOverrides] = useState({});
+
+  // Load video overrides from Supabase on mount
+  useEffect(() => {
+    async function loadVideoOverrides() {
+      const { data } = await sb.from("exercise_videos")
+        .select("exercise_id, youtube_id")
+        .eq("source", "manual");
+      if (data) {
+        const overrides = {};
+        data.forEach(r => { overrides[String(r.exercise_id)] = r.youtube_id === "none" ? null : r.youtube_id; });
+        setYtOverrides(overrides);
       }
-    } catch {}
-    return overrides;
-  });
+    }
+    loadVideoOverrides();
+  }, []);
   const touchStart = useRef(null);
   const color = day.color || DAY_COLORS[day.id] || "#6C63FF";
   const exercises = day.exercises || [];
@@ -688,17 +698,23 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
     touchStart.current = null;
   }
 
-  function handleEditVideo() {
+  async function handleEditVideo() {
     const ytInput = window.prompt(`ID de YouTube para "${ex.nombre}"\nEj: dQw4w9WgXcQ\n(deja vacío para quitar el video)`);
-    if (ytInput === null) return; // cancelled
-    const key = `yt_override_${ex.id}`;
-    if (ytInput.trim()) {
-      localStorage.setItem(key, ytInput.trim());
-      setYtOverrides(prev => ({ ...prev, [String(ex.id)]: ytInput.trim() }));
-    } else {
-      localStorage.removeItem(key);
-      setYtOverrides(prev => { const n = { ...prev }; delete n[String(ex.id)]; return n; });
-    }
+    if (ytInput === null) return;
+    const newId = ytInput.trim() || "none";
+
+    // Save to Supabase
+    await sb.from("exercise_videos").upsert({
+      exercise_id: ex.id,
+      youtube_id: newId,
+      source: "manual",
+    }, { onConflict: "exercise_id" });
+
+    // Update local state immediately
+    setYtOverrides(prev => ({
+      ...prev,
+      [String(ex.id)]: newId === "none" ? null : newId
+    }));
     setShowVideo(false);
   }
 
