@@ -234,7 +234,7 @@ function ProfileScreen({ user, existing, onDone, onChangePassword }) {
         <div style={{ marginBottom: 8 }}>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>EQUIPO DISPONIBLE</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-            {["Mancuernas", "Barra", "Máquinas", "Bandas elásticas", "Peso corporal", "Kettlebell", "TRX", "Poleas"].map(eq => {
+            {["Mancuernas", "Barra", "Máquinas", "Bandas elásticas", "Barra de pilates", "Peso corporal", "Kettlebell", "TRX", "Poleas"].map(eq => {
               const sel = (form.equipo || []).includes(eq);
               return (
                 <button key={eq} onClick={() => { const cur = form.equipo || []; f("equipo", sel ? cur.filter(e => e !== eq) : [...cur, eq]); }}
@@ -325,7 +325,7 @@ ${equipoArr.includes("Peso corporal") ? "- Peso corporal: flexiones, fondos, sen
 ${equipoArr.includes("Kettlebell") ? "- Kettlebell: swing, goblet squat, press, remo, snatch" : ""}
 ${equipoArr.includes("TRX") ? "- TRX: remo en suspensión, flexiones TRX, zancadas, core" : ""}
 ${equipoArr.includes("Máquinas") ? "- Máquinas: todas las máquinas de gimnasio disponibles" : ""}
-${equipoArr.includes("Poleas") ? "- Poleas: jalón, polea baja, face pull, extensión tríceps, curl" : ""}
+${equipoArr.includes("Barra de pilates") ? "- Barra de pilates con bandas: sentadilla con barra+banda, curl de bíceps con barra, extensión de tríceps, remo de pie, press de hombro, sentadilla sumo, elevaciones de pierna, glúteo en cuadrupedia, patada de glúteo, curl de isquiotibiales de pie, aducción/abducción con banda, plancha con banda, rotaciones de core" : ""}
 Si un ejercicio requiere equipo que NO está en la lista, SUSTITÚYELO por uno equivalente con el equipo disponible.` : "El usuario tiene acceso a gimnasio completo con todas las máquinas y equipos.";
 
       // Pre-define day structure based on gender/goal to prevent muscle group mixing
