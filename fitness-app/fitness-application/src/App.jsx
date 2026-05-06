@@ -298,7 +298,20 @@ function AIRoutineScreen({ profile, onDone, onSkip }) {
       const objetivoLabels = { masa_muscular: "ganar masa muscular e hipertrofia", bajar_peso: "bajar de peso y quemar grasa", tonificar: "tonificar y definir el cuerpo", resistencia: "mejorar resistencia cardiovascular", fuerza: "ganar fuerza máxima", flexibilidad: "mejorar flexibilidad y movilidad" };
       const objetivoStr = objetivoLabels[profile.objetivo] || "mejorar condición física general";
 
-      // Build equipment-specific exercise guidance
+      // Build injury-specific forbidden exercise list
+      const lesionesStr = profile.lesiones || "";
+      let ejerciciosProhibidos = "";
+      if (lesionesStr) {
+        const prohibidos = [];
+        if (/codo|artrosis|codo/i.test(lesionesStr)) prohibidos.push("flexiones, fondos, press con barra, extensiones de tríceps, dominadas, plancha con apoyo en manos");
+        if (/hombro|manguito|labrum/i.test(lesionesStr)) prohibidos.push("press militar, elevaciones frontales, jalón detrás del cuello, remo al mentón");
+        if (/rodilla|menisco|ligamento/i.test(lesionesStr)) prohibidos.push("sentadilla profunda, zancadas, saltos, leg press con mucho peso");
+        if (/lumbar|espalda baja|hernia/i.test(lesionesStr)) prohibidos.push("peso muerto convencional, sentadilla con barra, buenos días");
+        if (/muñeca/i.test(lesionesStr)) prohibidos.push("flexiones, press con barra, curl con barra");
+        if (prohibidos.length > 0) {
+          ejerciciosProhibidos = `\nEJERCICIOS COMPLETAMENTE PROHIBIDOS por las lesiones (${lesionesStr}):\n${prohibidos.join("\n")}\nNO incluyas ninguno de estos ni ejercicios similares.`;
+        }
+      }
       const equipoGuia = soloEquipo ? `
 RESTRICCIÓN CRÍTICA DE EQUIPO — ESTO ES LO MÁS IMPORTANTE:
 El usuario SOLO tiene acceso a: ${equipoStr}.
@@ -331,7 +344,7 @@ ${equipoGuia}
 INSTRUCCIONES:
 1. ${soloEquipo ? `SOLO usa ejercicios con: ${equipoStr}. NINGÚN otro equipo.` : "Usa cualquier equipo de gimnasio."}
 2. Adapta al objetivo: ${objetivoStr}
-3. Evita ejercicios que afecten: ${profile.lesiones || "ninguna limitación"}
+3. Evita ejercicios que afecten: ${profile.lesiones || "ninguna limitación"}${ejerciciosProhibidos ? `\n${ejerciciosProhibidos}` : ""}
 4. ${profile.sexo === "femenino" ? "Mujer: prioriza glúteos, core y piernas con más repeticiones." : "Hombre: equilibra tren superior e inferior para hipertrofia."}
 
 RESPONDE SOLO CON JSON VÁLIDO sin texto extra ni markdown:
@@ -432,7 +445,7 @@ REGLAS JSON:
 }
 
 // ─── Home ─────────────────────────────────────────────────────────────────────
-function HomeScreen({ user, profile, days, logs, onSelectDay, onLogout, onEditProfile, onRegenerateRoutine }) {
+function HomeScreen({ user, profile, days, logs, streak, onSelectDay, onLogout, onEditProfile, onRegenerateRoutine }) {
   const today = getTodayDayIdx();
   const todayStr_ = todayStr();
   const now = new Date();
@@ -478,10 +491,14 @@ function HomeScreen({ user, profile, days, logs, onSelectDay, onLogout, onEditPr
       </div>
 
       <div style={{ display: "flex", gap: 10, padding: "0 24px 24px" }}>
-        {[{ label: "Días esta semana", val: daysWorked }, { label: "Ejercicios hoy", val: todayDone }].map(s => (
-          <div key={s.label} style={{ flex: 1, background: "#111118", borderRadius: 14, padding: "14px 16px", border: "1px solid #1a1a1a" }}>
-            <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 700 }}>{s.val}</div>
+        {[
+          { label: "Días esta semana", val: daysWorked },
+          { label: "Ejercicios hoy", val: todayDone },
+          { label: "Racha", val: `🔥 ${streak}` },
+        ].map(s => (
+          <div key={s.label} style={{ flex: 1, background: "#111118", borderRadius: 14, padding: "14px 10px", border: "1px solid #1a1a1a" }}>
+            <div style={{ fontSize: 10, color: "#555", marginBottom: 4, letterSpacing: "0.06em" }}>{s.label.toUpperCase()}</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{s.val}</div>
           </div>
         ))}
       </div>
@@ -651,26 +668,16 @@ function MediaFallback({ exNombre, exId, color, userId }) {
 }
 
 // ─── Exercise Screen ──────────────────────────────────────────────────────────
-function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange }) {
+function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange, onNoteChange, onAllDone, profile, onReplaceExercise }) {
   const [idx, setIdx] = useState(startIdx);
   const [activeSeries, setActiveSeries] = useState([]);
   const [showVideo, setShowVideo] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [ytOverrides, setYtOverrides] = useState({});
-
-  // Load video overrides from Supabase on mount
-  useEffect(() => {
-    async function loadVideoOverrides() {
-      const { data } = await sb.from("exercise_videos")
-        .select("exercise_id, youtube_id")
-        .eq("source", "manual");
-      if (data) {
-        const overrides = {};
-        data.forEach(r => { overrides[String(r.exercise_id)] = r.youtube_id === "none" ? null : r.youtube_id; });
-        setYtOverrides(overrides);
-      }
-    }
-    loadVideoOverrides();
-  }, []);
+  const [restTimer, setRestTimer] = useState(null);
+  const restRef = useRef(null);
+  const [showNotes, setShowNotes] = useState(false);
+  const [noteText, setNoteText] = useState("");
   const touchStart = useRef(null);
   const color = day.color || DAY_COLORS[day.id] || "#6C63FF";
   const exercises = day.exercises || [];
@@ -681,45 +688,108 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
   const isDone = log?.completado || false;
   const weight = log?.peso_usado ?? ex?.peso_sugerido ?? 0;
 
-  useEffect(() => { setActiveSeries([]); setShowVideo(false); }, [idx]);
   useEffect(() => {
-    if (log?.series_completadas) {
-      try { setActiveSeries(JSON.parse(log.series_completadas)); } catch {}
-    }
+    setActiveSeries([]);
+    setShowVideo(false);
+    setShowNotes(false);
+    stopTimer();
+    const l = getLog(exercises[idx]?.id);
+    setNoteText(l?.nota || "");
+    if (l?.series_completadas) { try { setActiveSeries(JSON.parse(l.series_completadas)); } catch {} }
+  }, [idx]);
+
+  useEffect(() => {
+    if (log?.series_completadas) { try { setActiveSeries(JSON.parse(log.series_completadas)); } catch {} }
+    setNoteText(log?.nota || "");
   }, [log?.id]);
+
+  useEffect(() => () => stopTimer(), []);
+
+  // Load video overrides from Supabase on mount
+  useEffect(() => {
+    sb.from("exercise_videos").select("exercise_id, youtube_id").eq("source", "manual").then(({ data }) => {
+      if (data) {
+        const overrides = {};
+        data.forEach(r => { overrides[String(r.exercise_id)] = r.youtube_id === "none" ? null : r.youtube_id; });
+        setYtOverrides(overrides);
+      }
+    });
+  }, []);
+
+  function stopTimer() {
+    if (restRef.current) clearInterval(restRef.current);
+    restRef.current = null;
+    setRestTimer(null);
+  }
+
+  function startRestTimer(secs = 90) {
+    stopTimer();
+    setRestTimer(secs);
+    restRef.current = setInterval(() => {
+      setRestTimer(prev => {
+        if (prev <= 1) { clearInterval(restRef.current); restRef.current = null; return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  }
 
   function toggleSerie(i) {
     const next = activeSeries.includes(i) ? activeSeries.filter(s => s !== i) : [...activeSeries, i];
     setActiveSeries(next);
     onToggle(ex.id, next.length === ex.series, weight, JSON.stringify(next));
+    if (!activeSeries.includes(i)) startRestTimer(90); // start rest when completing a serie
+    // Check if all exercises are done
+    setTimeout(() => {
+      const allDone = exercises.every((e, ei) => {
+        if (ei === idx) return next.length === e.series;
+        return getLog(e.id)?.completado;
+      });
+      if (allDone) onAllDone();
+    }, 400);
   }
 
-  function handleTouchStart(e) { touchStart.current = e.touches[0].clientX; }
-  function handleTouchEnd(e) {
-    if (!touchStart.current) return;
-    const dx = e.changedTouches[0].clientX - touchStart.current;
-    if (Math.abs(dx) < 50) return;
-    setIdx(i => dx < 0 ? (i + 1) % exercises.length : (i - 1 + exercises.length) % exercises.length);
-    touchStart.current = null;
+  async function handleReplaceExercise() {
+    setReplacing(true);
+    try {
+      const lesiones = profile?.lesiones || "ninguna";
+      const equipo = Array.isArray(profile?.equipo) ? profile.equipo.join(", ") : (profile?.equipo || "gimnasio completo");
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: "Eres un entrenador personal experto. Responde SOLO con JSON válido, sin texto extra." },
+            { role: "user", content: `El ejercicio "${ex.nombre}" no es adecuado para un usuario con estas lesiones/limitaciones: "${lesiones}".
+Sugiere UN ejercicio alternativo que:
+1. Trabaje el mismo grupo muscular (${day.tag})
+2. Sea seguro para las lesiones mencionadas
+3. Use este equipo disponible: ${equipo}
+
+Responde SOLO con este JSON:
+{"nombre":"nombre del ejercicio","series":${ex.series},"reps":"${ex.reps}","descripcion":"Indicación técnica de 80-120 caracteres explicando ejecución correcta y por qué es seguro para la lesión.","peso_sugerido":${ex.peso_sugerido || 0}}` }
+          ],
+          max_tokens: 300,
+          temperature: 0.5,
+        })
+      });
+      const data = await res.json();
+      const text = (data.choices?.[0]?.message?.content || "").replace(/```json|```/g, "").trim();
+      const newEx = JSON.parse(text);
+      onReplaceExercise(idx, { ...newEx, id: ex.id, orden: ex.orden });
+    } catch (e) {
+      alert("Error al reemplazar ejercicio. Intenta de nuevo.");
+    } finally {
+      setReplacing(false);
+    }
   }
 
   async function handleEditVideo() {
     const ytInput = window.prompt(`ID de YouTube para "${ex.nombre}"\nEj: dQw4w9WgXcQ\n(deja vacío para quitar el video)`);
     if (ytInput === null) return;
     const newId = ytInput.trim() || "none";
-
-    // Save to Supabase
-    await sb.from("exercise_videos").upsert({
-      exercise_id: ex.id,
-      youtube_id: newId,
-      source: "manual",
-    }, { onConflict: "exercise_id" });
-
-    // Update local state immediately
-    setYtOverrides(prev => ({
-      ...prev,
-      [String(ex.id)]: newId === "none" ? null : newId
-    }));
+    await sb.from("exercise_videos").upsert({ exercise_id: ex.id, youtube_id: newId, source: "manual" }, { onConflict: "exercise_id" });
+    setYtOverrides(prev => ({ ...prev, [String(ex.id)]: newId === "none" ? null : newId }));
     setShowVideo(false);
   }
 
@@ -745,8 +815,23 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
         {/* Title */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{day.tag}</div>
-          <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 6px", lineHeight: 1.15 }}>{ex.nombre}</h2>
-          <div style={{ fontSize: 14, color: "#555" }}>{ex.series} series · {ex.reps} repeticiones</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={{ flex: 1 }}>
+              <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 6px", lineHeight: 1.15 }}>{ex.nombre}</h2>
+              <div style={{ fontSize: 14, color: "#555" }}>{ex.series} series · {ex.reps} repeticiones</div>
+            </div>
+            {/* Replace exercise button */}
+            <button
+              onClick={handleReplaceExercise}
+              disabled={replacing}
+              style={{ flexShrink: 0, marginLeft: 12, marginTop: 4, background: replacing ? "#1a1a2e" : "#111118", border: `1px solid ${color}44`, borderRadius: 10, padding: "7px 12px", cursor: replacing ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}
+            >
+              {replacing
+                ? <><Spinner color={color} size={12} /><span style={{ fontSize: 11, color: "#555" }}>Buscando...</span></>
+                : <><span style={{ fontSize: 13 }}>✦</span><span style={{ fontSize: 11, color, fontWeight: 600 }}>Cambiar</span></>
+              }
+            </button>
+          </div>
         </div>
 
         {/* Video / Image section */}
@@ -803,6 +888,24 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
           {activeSeries.length > 0 && <div style={{ fontSize: 12, color: "#555", marginTop: 8 }}>{activeSeries.length} de {ex.series} series completadas</div>}
         </div>
 
+        {/* Rest Timer */}
+        {restTimer !== null && (
+          <div style={{ marginBottom: 16, background: "#111118", borderRadius: 14, padding: "14px 18px", border: `1px solid ${restTimer === 0 ? color + "88" : "#1e1e2e"}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 11, color: "#444", fontWeight: 600, letterSpacing: "0.1em" }}>{restTimer === 0 ? "¡A la siguiente serie!" : "DESCANSO"}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: restTimer === 0 ? color : restTimer <= 10 ? "#FF6B6B" : "#F0EEF8", marginTop: 2 }}>
+                {restTimer === 0 ? "✓" : `${Math.floor(restTimer / 60)}:${String(restTimer % 60).padStart(2, "0")}`}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {restTimer > 0 && (
+                <button onClick={() => startRestTimer(restTimer + 30)} style={{ background: "#1e1e2e", border: "1px solid #2a2a3a", borderRadius: 8, padding: "6px 10px", color: "#888", fontSize: 11, cursor: "pointer" }}>+30s</button>
+              )}
+              <button onClick={stopTimer} style={{ background: "#1e1e2e", border: "1px solid #2a2a3a", borderRadius: 8, padding: "6px 10px", color: "#FF6B6B", fontSize: 11, cursor: "pointer" }}>✕</button>
+            </div>
+          </div>
+        )}
+
         {/* Weight control */}
         <div style={{ ...S.card, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -824,6 +927,27 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange 
           style={{ width: "100%", padding: 16, borderRadius: 14, fontSize: 15, fontWeight: 600, cursor: "pointer", transition: "all 0.2s", background: isDone ? "#0d1a14" : color, color: isDone ? color : (["#FFB347", "#00C896"].includes(color) ? "#000" : "#fff"), border: `1.5px solid ${isDone ? color + "55" : "transparent"}` }}>
           {isDone ? "✓ Completado" : "Marcar como hecho"}
         </button>
+
+        {/* Notes */}
+        <div style={{ marginTop: 14 }}>
+          <button onClick={() => setShowNotes(!showNotes)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: noteText ? color : "#444", display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
+            <span>✎</span>
+            <span>{noteText ? "Ver nota" : "Agregar nota"} {noteText ? "·" : ""} {noteText ? noteText.slice(0, 30) + (noteText.length > 30 ? "..." : "") : ""}</span>
+          </button>
+          {showNotes && (
+            <div style={{ marginTop: 8 }}>
+              <textarea
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                onBlur={() => onNoteChange(ex.id, noteText)}
+                placeholder="Ej: sentí tensión en el hombro, aumentar peso la próxima semana..."
+                style={{ ...S.input, minHeight: 80, resize: "none", fontFamily: "inherit", fontSize: 13, marginBottom: 0 }}
+                autoFocus
+              />
+              <div style={{ fontSize: 11, color: "#444", marginTop: 4 }}>Se guarda automáticamente</div>
+            </div>
+          )}
+        </div>
 
         <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: "#2a2a2a" }}>desliza para navegar</div>
       </div>
@@ -940,24 +1064,50 @@ export default function App() {
     setAppScreen("home");
   }
 
-  const upsertLog = useCallback(async (exerciseId, completado, pesoUsado, seriesJson) => {
+  const upsertLog = useCallback(async (exerciseId, completado, pesoUsado, seriesJson, nota) => {
     if (!session?.user) return;
     const today = todayStr();
-    const newLog = { user_id: session.user.id, exercise_id: exerciseId, completado, peso_usado: pesoUsado, fecha: today, ...(seriesJson ? { series_completadas: seriesJson } : {}) };
+    const newLog = {
+      user_id: session.user.id, exercise_id: exerciseId,
+      completado, peso_usado: pesoUsado, fecha: today,
+      ...(seriesJson ? { series_completadas: seriesJson } : {}),
+      ...(nota !== undefined ? { nota } : {}),
+    };
     setLogs(prev => {
       const i = prev.findIndex(l => l.exercise_id === exerciseId && l.fecha === today);
       if (i >= 0) { const n = [...prev]; n[i] = { ...n[i], ...newLog }; return n; }
       return [...prev, { ...newLog, id: `tmp-${exerciseId}` }];
     });
     const { data } = await sb.from("exercise_logs").upsert(newLog, { onConflict: "user_id,exercise_id,fecha" }).select().single();
-    if (data) setLogs(prev => { const i = prev.findIndex(l => l.exercise_id === exerciseId && l.fecha === today); if (i >= 0) { const n = [...prev]; n[i] = data; return n; } return [...prev.filter(l => l.id !== `tmp-${exerciseId}`), data]; });
+    if (data) setLogs(prev => {
+      const i = prev.findIndex(l => l.exercise_id === exerciseId && l.fecha === today);
+      if (i >= 0) { const n = [...prev]; n[i] = data; return n; }
+      return [...prev.filter(l => l.id !== `tmp-${exerciseId}`), data];
+    });
   }, [session]);
 
   const handleWeightChange = useCallback(async (exerciseId, peso) => {
     const today = todayStr();
     const ex = logs.find(l => l.exercise_id === exerciseId && l.fecha === today);
-    await upsertLog(exerciseId, ex?.completado || false, peso, ex?.series_completadas);
+    await upsertLog(exerciseId, ex?.completado || false, peso, ex?.series_completadas, ex?.nota);
   }, [logs, upsertLog]);
+
+  // Streak calculation
+  function calcStreak() {
+    if (!logs.length) return 0;
+    const workoutDates = [...new Set(logs.filter(l => l.completado).map(l => l.fecha))].sort().reverse();
+    if (!workoutDates.length) return 0;
+    let streak = 0;
+    let check = new Date(); check.setHours(0,0,0,0);
+    for (const date of workoutDates) {
+      const d = new Date(date + "T12:00:00");
+      const diff = Math.round((check - d) / 86400000);
+      if (diff <= 1) { streak++; check = d; }
+      else break;
+    }
+    return streak;
+  }
+  const streak = calcStreak();
 
   if (loading) return <div style={S.screen}><Spinner /></div>;
   if (!session) return <LoginScreen onLogin={() => {}} />;
@@ -965,9 +1115,80 @@ export default function App() {
   if (appScreen === "profile") return <ProfileScreen user={session.user} existing={profile} onDone={p => { setProfile(p); setAppScreen("home"); loadAll(); }} onChangePassword={() => setAppScreen("changePassword")} />;
   if (appScreen === "aiRoutine") return <AIRoutineScreen profile={profile} onDone={saveAIRoutine} onSkip={() => setAppScreen("home")} />;
 
+  if (appScreen === "summary" && selectedDay) {
+    const todayLogs = logs.filter(l => l.fecha === todayStr());
+    const exercises = selectedDay.exercises || [];
+    const doneCount = exercises.filter(ex => todayLogs.find(l => l.exercise_id === ex.id && l.completado)).length;
+    const totalVolume = exercises.reduce((sum, ex) => {
+      const log = todayLogs.find(l => l.exercise_id === ex.id);
+      if (!log?.completado) return sum;
+      const series = log.series_completadas ? JSON.parse(log.series_completadas).length : ex.series;
+      const repsNum = parseInt(ex.reps) || 10;
+      return sum + (series * repsNum * (log.peso_usado || 0));
+    }, 0);
+    const color = selectedDay.color || "#6C63FF";
+    return (
+      <div style={S.screen}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 28px", textAlign: "center" }}>
+          <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
+          <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 8 }}>¡Entrenamiento completado!</div>
+          <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 32px" }}>{selectedDay.nombre}</h2>
+          <div style={{ display: "flex", gap: 12, width: "100%", marginBottom: 32 }}>
+            {[
+              { label: "Ejercicios", val: `${doneCount}/${exercises.length}` },
+              { label: "Volumen total", val: `${totalVolume.toLocaleString()} kg` },
+              { label: "Racha", val: `🔥 ${streak}` },
+            ].map(s => (
+              <div key={s.label} style={{ flex: 1, background: "#111118", borderRadius: 14, padding: "14px 8px", border: "1px solid #1e1e1e" }}>
+                <div style={{ fontSize: 10, color: "#555", marginBottom: 6, letterSpacing: "0.08em" }}>{s.label.toUpperCase()}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+          {streak > 0 && (
+            <div style={{ background: "#111118", border: "1px solid #FFB34744", borderRadius: 14, padding: "14px 20px", marginBottom: 28, width: "100%" }}>
+              <div style={{ fontSize: 13, color: "#FFB347", fontWeight: 600 }}>🔥 {streak} día{streak !== 1 ? "s" : ""} seguido{streak !== 1 ? "s" : ""}</div>
+              <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>¡Sigue así, no rompas la racha!</div>
+            </div>
+          )}
+          <button style={S.btnPrimary(color)} onClick={() => { setAppScreen("home"); setSelectedDay(null); }}>Volver al inicio</button>
+          <div style={{ height: 12 }} />
+          <button style={{ ...S.btnGhost, color: "#555", borderColor: "#222" }} onClick={() => setAppScreen("day")}>Ver resumen del día</button>
+        </div>
+      </div>
+    );
+  }
+
   if (appScreen === "exercise" && selectedDay) return (
-    <ExerciseScreen day={selectedDay} startIdx={startExIdx} onBack={() => setAppScreen("day")}
-      logs={logs} onToggle={upsertLog} onWeightChange={handleWeightChange} />
+    <ExerciseScreen
+      day={selectedDay}
+      startIdx={startExIdx}
+      onBack={() => setAppScreen("day")}
+      logs={logs}
+      onToggle={upsertLog}
+      onWeightChange={handleWeightChange}
+      onNoteChange={(exerciseId, nota) => {
+        const today = todayStr();
+        const ex = logs.find(l => l.exercise_id === exerciseId && l.fecha === today);
+        upsertLog(exerciseId, ex?.completado || false, ex?.peso_usado || 0, ex?.series_completadas, nota);
+      }}
+      onAllDone={() => setAppScreen("summary")}
+      profile={profile}
+      onReplaceExercise={(exIdx, newEx) => {
+        const updatedDay = { ...selectedDay, exercises: selectedDay.exercises.map((e, i) => i === exIdx ? newEx : e) };
+        setSelectedDay(updatedDay);
+        setDays(prev => prev.map(d => d.id === selectedDay.id ? updatedDay : d));
+        if (profile?.rutina_ia) {
+          try {
+            const rutina = JSON.parse(profile.rutina_ia);
+            const updatedRutina = rutina.map(d => d.id === selectedDay.id ? updatedDay : d);
+            sb.from("profiles").update({ rutina_ia: JSON.stringify(updatedRutina) }).eq("id", session.user.id);
+          } catch (e) {
+            console.warn("No se pudo actualizar rutina_ia en BD:", e.message);
+          }
+        }
+      }}
+    />
   );
 
   if (appScreen === "day" && selectedDay) return (
@@ -977,7 +1198,7 @@ export default function App() {
   );
 
   return (
-    <HomeScreen user={session.user} profile={profile} days={days} logs={logs}
+    <HomeScreen user={session.user} profile={profile} days={days} logs={logs} streak={streak}
       onSelectDay={d => { setSelectedDay(d); setAppScreen("day"); }}
       onLogout={() => sb.auth.signOut()}
       onEditProfile={() => setAppScreen("profile")}
