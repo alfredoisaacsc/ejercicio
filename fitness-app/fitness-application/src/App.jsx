@@ -771,6 +771,15 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange,
     }, 400);
   }
 
+  function handleTouchStart(e) { touchStart.current = e.touches[0].clientX; }
+  function handleTouchEnd(e) {
+    if (!touchStart.current) return;
+    const dx = e.changedTouches[0].clientX - touchStart.current;
+    if (Math.abs(dx) < 50) return;
+    setIdx(i => dx < 0 ? (i + 1) % exercises.length : (i - 1 + exercises.length) % exercises.length);
+    touchStart.current = null;
+  }
+
   async function handleReplaceExercise() {
     setReplacing(true);
     try {
