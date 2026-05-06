@@ -187,6 +187,11 @@ function ProfileScreen({ user, existing, onDone, onChangePassword }) {
   return (
     <div style={S.screen}>
       <div style={{ flex: 1, overflowY: "auto", padding: "52px 28px 40px" }}>
+        {/* Header con botones */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <button onClick={onDone.bind(null, existing || {})} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 13, padding: 0 }}>← Volver</button>
+          <button onClick={() => sb.auth.signOut()} style={{ background: "none", border: "1px solid #FF6B6B44", borderRadius: 8, padding: "6px 12px", color: "#FF6B6B", fontSize: 12, cursor: "pointer" }}>Salir</button>
+        </div>
         <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#6C63FF", fontWeight: 600, marginBottom: 8 }}>PERFIL</div>
         <h2 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 6px" }}>Cuéntanos sobre ti</h2>
         <p style={{ fontSize: 13, color: "#555", marginBottom: 28 }}>La IA usará estos datos para generar tu rutina personalizada.</p>
