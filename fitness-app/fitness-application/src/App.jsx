@@ -328,6 +328,22 @@ ${equipoArr.includes("Máquinas") ? "- Máquinas: todas las máquinas de gimnasi
 ${equipoArr.includes("Poleas") ? "- Poleas: jalón, polea baja, face pull, extensión tríceps, curl" : ""}
 Si un ejercicio requiere equipo que NO está en la lista, SUSTITÚYELO por uno equivalente con el equipo disponible.` : "El usuario tiene acceso a gimnasio completo con todas las máquinas y equipos.";
 
+      // Pre-define day structure based on gender/goal to prevent muscle group mixing
+      const esFemenino = profile.sexo === "femenino";
+      const esCardio = profile.objetivo === "bajar_peso" || profile.objetivo === "resistencia";
+
+      const dayStructure = esFemenino ? [
+        { dia: 1, nombre: "Glúteos y piernas", tag: "glúteo · pierna", color: "#6C63FF", musculos: "glúteos, cuádriceps, isquiotibiales, pantorrillas — SOLO ejercicios de tren inferior" },
+        { dia: 2, nombre: "Espalda y bíceps", tag: "espalda · bíceps", color: "#00C896", musculos: "dorsales, trapecios, romboides, bíceps — SOLO ejercicios de tren superior posterior" },
+        { dia: 3, nombre: "Glúteos y core", tag: "glúteo · core", color: "#FF6B6B", musculos: "glúteos, abdominales, oblicuos, estabilizadores — SOLO ejercicios de glúteo y core" },
+        { dia: 4, nombre: "Hombros y tríceps", tag: "hombro · tríceps", color: "#FFB347", musculos: "deltoides, tríceps, pecho — SOLO ejercicios de tren superior anterior" },
+      ] : [
+        { dia: 1, nombre: esCardio ? "Pecho y hombros" : "Pecho, hombros y tríceps", tag: "pecho · hombro", color: "#6C63FF", musculos: "pectoral, deltoides, tríceps — SOLO ejercicios de empuje de tren superior" },
+        { dia: 2, nombre: "Piernas y glúteos", tag: "pierna · glúteo", color: "#00C896", musculos: "cuádriceps, isquiotibiales, glúteos, pantorrillas — SOLO ejercicios de tren inferior" },
+        { dia: 3, nombre: "Espalda y bíceps", tag: "espalda · bíceps", color: "#FF6B6B", musculos: "dorsales, trapecios, romboides, bíceps — SOLO ejercicios de jalón y tirón" },
+        { dia: 4, nombre: "Hombros y brazos", tag: "hombro · brazo", color: "#FFB347", musculos: "deltoides, bíceps, tríceps, antebrazo — SOLO ejercicios de aislamiento de brazos y hombros" },
+      ];
+
       const prompt = `Eres un entrenador personal experto. Crea una rutina de gimnasio de 4 días personalizada.
 
 DATOS DEL USUARIO:
@@ -341,22 +357,27 @@ DATOS DEL USUARIO:
 
 ${equipoGuia}
 
+ESTRUCTURA FIJA DE LOS 4 DÍAS — NO CAMBIAR:
+${dayStructure.map(d => `Día ${d.dia}: "${d.nombre}" → ${d.musculos}`).join("\n")}
+
+REGLA CRÍTICA: Cada día tiene músculos ASIGNADOS. SOLO incluye ejercicios de esos músculos.
+Si el Día 1 es pecho/hombro, TODOS sus ejercicios deben ser de pecho, hombro o tríceps. NUNCA sentadillas, glúteos ni piernas en ese día.
+
 INSTRUCCIONES:
 1. ${soloEquipo ? `SOLO usa ejercicios con: ${equipoStr}. NINGÚN otro equipo.` : "Usa cualquier equipo de gimnasio."}
-2. Adapta al objetivo: ${objetivoStr}
-3. Evita ejercicios que afecten: ${profile.lesiones || "ninguna limitación"}${ejerciciosProhibidos ? `\n${ejerciciosProhibidos}` : ""}
-4. ${profile.sexo === "femenino" ? "Mujer: prioriza glúteos, core y piernas con más repeticiones." : "Hombre: equilibra tren superior e inferior para hipertrofia."}
+2. Adapta intensidad al objetivo: ${objetivoStr}
+3. ${profile.lesiones ? `Lesiones a respetar: ${profile.lesiones}${ejerciciosProhibidos ? `\n${ejerciciosProhibidos}` : ""}` : "Sin lesiones."}
+4. Ajusta pesos y repeticiones al nivel ${profile.experiencia} del usuario.
 
 RESPONDE SOLO CON JSON VÁLIDO sin texto extra ni markdown:
-{"days":[{"id":1,"nombre":"nombre descriptivo del día","tag":"2-3 palabras clave de los músculos trabajados","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Técnica detallada de ejecución con postura y respiración correcta durante el movimiento.","peso_sugerido":20}]}]}
+{"days":[{"id":1,"nombre":"${dayStructure[0].nombre}","tag":"${dayStructure[0].tag}","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Técnica detallada 80-150 caracteres con postura y respiración correcta.","peso_sugerido":20}]},{"id":2,"nombre":"${dayStructure[1].nombre}","tag":"${dayStructure[1].tag}","color":"#00C896","exercises":[]},{"id":3,"nombre":"${dayStructure[2].nombre}","tag":"${dayStructure[2].tag}","color":"#FF6B6B","exercises":[]},{"id":4,"nombre":"${dayStructure[3].nombre}","tag":"${dayStructure[3].tag}","color":"#FFB347","exercises":[]}]}
 
 REGLAS JSON:
 - Exactamente 4 días, exactamente 5 ejercicios por día
 - Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
 - IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
-- nombre: describe los músculos del día, ej: "Pecho y hombros", "Piernas y glúteos", "Espalda y bíceps"
-- tag: 2-3 palabras clave de los músculos, ej: "pecho · hombro", "glúteo · pierna", "espalda · bíceps"
-- descripcion OBLIGATORIA 80-150 caracteres con técnica de ejecución
+- nombre y tag EXACTAMENTE como aparecen en la estructura de arriba
+- descripcion OBLIGATORIA 80-150 caracteres
 - SOLO JSON, sin texto antes ni después`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
