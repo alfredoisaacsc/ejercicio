@@ -348,13 +348,15 @@ INSTRUCCIONES:
 4. ${profile.sexo === "femenino" ? "Mujer: prioriza glúteos, core y piernas con más repeticiones." : "Hombre: equilibra tren superior e inferior para hipertrofia."}
 
 RESPONDE SOLO CON JSON VÁLIDO sin texto extra ni markdown:
-{"days":[{"id":1,"nombre":"nombre del día","tag":"etiqueta","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Técnica detallada de ejecución con postura y respiración correcta durante el movimiento.","peso_sugerido":20}]}]}
+{"days":[{"id":1,"nombre":"nombre descriptivo del día","tag":"2-3 palabras clave de los músculos trabajados","color":"#6C63FF","exercises":[{"id":1,"nombre":"nombre ejercicio","series":4,"reps":"10-12","descripcion":"Técnica detallada de ejecución con postura y respiración correcta durante el movimiento.","peso_sugerido":20}]}]}
 
 REGLAS JSON:
 - Exactamente 4 días, exactamente 5 ejercicios por día
 - Colores FIJOS: día1=#6C63FF día2=#00C896 día3=#FF6B6B día4=#FFB347
 - IDs: día1=1-5, día2=101-105, día3=201-205, día4=301-305
-- descripcion OBLIGATORIA 80-150 caracteres
+- nombre: describe los músculos del día, ej: "Pecho y hombros", "Piernas y glúteos", "Espalda y bíceps"
+- tag: 2-3 palabras clave de los músculos, ej: "pecho · hombro", "glúteo · pierna", "espalda · bíceps"
+- descripcion OBLIGATORIA 80-150 caracteres con técnica de ejecución
 - SOLO JSON, sin texto antes ni después`;
 
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -418,9 +420,9 @@ REGLAS JSON:
         <p style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>Generada especialmente para {profile.nombre}. Puedes editarla antes de guardar.</p>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "0 24px" }}>
-        {routine?.days?.map(day => (
+        {routine?.days?.map((day, di) => (
           <div key={day.id} style={{ ...S.card, borderColor: day.color + "44" }}>
-            <div style={{ fontSize: 11, color: day.color, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Día {day.id} · {day.tag}</div>
+            <div style={{ fontSize: 11, color: day.color, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Día {di + 1} · {day.tag}</div>
             <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>{day.nombre}</div>
             {day.exercises?.map(ex => (
               <div key={ex.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid #1a1a1a" }}>
@@ -516,7 +518,7 @@ function HomeScreen({ user, profile, days, logs, streak, onSelectDay, onLogout, 
               <div style={{ paddingLeft: isToday ? 8 : 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
-                    <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4, textTransform: "uppercase" }}>Día {day.id} · {day.tag}</div>
+                    <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.1em", marginBottom: 4, textTransform: "uppercase" }}>Día {day.orden || day.id} · {day.tag}</div>
                     <div style={{ fontSize: 16, fontWeight: 600 }}>{day.nombre}</div>
                     <div style={{ fontSize: 12, color: "#444", marginTop: 3 }}>{total} ejercicios</div>
                   </div>
@@ -546,7 +548,7 @@ function DayScreen({ day, onBack, onSelectExercise, logs, onToggle, onWeightChan
     <div style={S.screen}>
       <div style={{ padding: "52px 24px 0" }}>
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#555", fontSize: 13, padding: 0, marginBottom: 16 }}>← Volver</button>
-        <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Día {day.id} · {day.tag}</div>
+        <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Día {day.orden || day.id} · {day.tag}</div>
         <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px" }}>{day.nombre}</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <div style={{ fontSize: 13, color: "#444" }}>{done}/{exercises.length}</div>
@@ -814,7 +816,7 @@ Responde SOLO con este JSON:
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px 24px 40px", overflowY: "auto" }}>
         {/* Title */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{day.tag}</div>
+          <div style={{ fontSize: 11, color, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>{day.tag} · Día {day.orden || day.id}</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div style={{ flex: 1 }}>
               <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 6px", lineHeight: 1.15 }}>{ex.nombre}</h2>
@@ -1044,10 +1046,10 @@ export default function App() {
   async function saveAIRoutine(routine) {
     if (!session?.user) return;
 
-    // Asignar IDs únicos a los ejercicios para el tracking de logs
     const daysWithIds = routine.days.map((d, di) => ({
       ...d,
-      id: 1000 + di + 1,
+      id: 1000 + di + 1,       // ID interno único para tracking
+      orden: di + 1,            // número visual: 1, 2, 3, 4
       exercises: (d.exercises || []).map((ex, ei) => ({
         ...ex,
         id: 10000 + (di * 100) + ei + 1,
@@ -1055,7 +1057,6 @@ export default function App() {
       }))
     }));
 
-    // Guardar como JSON en el perfil del usuario
     await sb.from("profiles").update({
       rutina_ia: JSON.stringify(daysWithIds)
     }).eq("id", session.user.id);
