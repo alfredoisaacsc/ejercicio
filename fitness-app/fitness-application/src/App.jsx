@@ -380,25 +380,24 @@ REGLAS JSON:
 - descripcion OBLIGATORIA 80-150 caracteres
 - SOLO JSON, sin texto antes ni después`;
 
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: "Eres un entrenador personal. Respondes ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown, sin backticks." },
-            { role: "user", content: prompt }
-          ],
+          model: "claude-sonnet-4-5",
           max_tokens: 4000,
-          temperature: 0.5,
+          messages: [{ role: "user", content: prompt }],
+          system: "Eres un entrenador personal certificado con 15 años de experiencia. Respondes ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown, sin backticks. Cada descripción de ejercicio debe ser técnicamente precisa, mencionar músculos trabajados, postura correcta, respiración y errores comunes a evitar.",
         })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || "Error de Groq");
-      const text = data.choices?.[0]?.message?.content || "";
+      if (!res.ok) throw new Error(data.error?.message || "Error de Claude API");
+      const text = data.content?.[0]?.text || "";
       const clean = text.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
       if (!parsed.days || parsed.days.length === 0) throw new Error("Respuesta inválida");
@@ -622,22 +621,25 @@ function MediaFallback({ exNombre, exId, color, userId }) {
         return;
       }
 
-      // 2. Ask Groq
+      // 2. Ask Claude
       try {
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [
-              { role: "system", content: "Eres un experto en fitness. Responde SOLO con el ID de YouTube (exactamente 11 caracteres), nada más. Si no conoces uno real y válido, responde exactamente: none" },
-              { role: "user", content: `ID de YouTube de un video tutorial en español del ejercicio: "${exNombre}". Solo el ID, sin texto.` }
-            ],
-            max_tokens: 20, temperature: 0,
+            model: "claude-sonnet-4-5",
+            max_tokens: 20,
+            system: "Responde SOLO con el ID de YouTube (exactamente 11 caracteres alfanuméricos, sin espacios ni guiones extras). Si no conoces uno real y válido, responde exactamente: none",
+            messages: [{ role: "user", content: `ID de YouTube de un video tutorial en español del ejercicio de gimnasio: "${exNombre}". Solo el ID de 11 caracteres.` }]
           })
         });
-        const groqData = await res.json();
-        const id = (groqData.choices?.[0]?.message?.content || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+        const claudeData = await res.json();
+        const id = (claudeData.content?.[0]?.text || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
         const validId = id && id.length === 11 && id !== "none" ? id : null;
 
         // 3. Save to Supabase
@@ -691,7 +693,7 @@ function MediaFallback({ exNombre, exId, color, userId }) {
 }
 
 // ─── Exercise Screen ──────────────────────────────────────────────────────────
-function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange, onNoteChange, onAllDone, profile, onReplaceExercise }) {
+function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange, onNoteChange, onAllDone, onIndexChange, profile, onReplaceExercise }) {
   const [idx, setIdx] = useState(startIdx);
   const [activeSeries, setActiveSeries] = useState([]);
   const [showVideo, setShowVideo] = useState(false);
@@ -719,6 +721,7 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange,
     const l = getLog(exercises[idx]?.id);
     setNoteText(l?.nota || "");
     if (l?.series_completadas) { try { setActiveSeries(JSON.parse(l.series_completadas)); } catch {} }
+    onIndexChange?.(idx);
   }, [idx]);
 
   useEffect(() => {
@@ -785,28 +788,31 @@ function ExerciseScreen({ day, startIdx, onBack, logs, onToggle, onWeightChange,
     try {
       const lesiones = profile?.lesiones || "ninguna";
       const equipo = Array.isArray(profile?.equipo) ? profile.equipo.join(", ") : (profile?.equipo || "gimnasio completo");
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: "Eres un entrenador personal experto. Responde SOLO con JSON válido, sin texto extra." },
-            { role: "user", content: `El ejercicio "${ex.nombre}" no es adecuado para un usuario con estas lesiones/limitaciones: "${lesiones}".
+          model: "claude-sonnet-4-5",
+          max_tokens: 400,
+          system: "Eres un entrenador personal certificado. Respondes SOLO con JSON válido sin texto extra.",
+          messages: [{ role: "user", content: `El ejercicio "${ex.nombre}" no es adecuado para un usuario con estas lesiones/limitaciones: "${lesiones}".
 Sugiere UN ejercicio alternativo que:
 1. Trabaje el mismo grupo muscular (${day.tag})
-2. Sea seguro para las lesiones mencionadas
+2. Sea completamente seguro para las lesiones mencionadas
 3. Use este equipo disponible: ${equipo}
 
 Responde SOLO con este JSON:
-{"nombre":"nombre del ejercicio","series":${ex.series},"reps":"${ex.reps}","descripcion":"Indicación técnica de 80-120 caracteres explicando ejecución correcta y por qué es seguro para la lesión.","peso_sugerido":${ex.peso_sugerido || 0}}` }
-          ],
-          max_tokens: 300,
-          temperature: 0.5,
+{"nombre":"nombre del ejercicio","series":${ex.series},"reps":"${ex.reps}","descripcion":"Descripción técnica de 100-150 caracteres: músculos trabajados, postura correcta, respiración y por qué es seguro para la lesión.","peso_sugerido":${ex.peso_sugerido || 0}}` }]
         })
       });
       const data = await res.json();
-      const text = (data.choices?.[0]?.message?.content || "").replace(/```json|```/g, "").trim();
+      if (!res.ok) throw new Error(data.error?.message || "Error de Claude API");
+      const text = (data.content?.[0]?.text || "").replace(/```json|```/g, "").trim();
       const newEx = JSON.parse(text);
       onReplaceExercise(idx, { ...newEx, id: ex.id, orden: ex.orden });
     } catch (e) {
@@ -1027,9 +1033,40 @@ export default function App() {
   const [days, setDays] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [appScreen, setAppScreen] = useState("home"); // home | day | exercise | profile | aiRoutine | changePassword
+  const [appScreen, setAppScreen] = useState("home");
   const [selectedDay, setSelectedDay] = useState(null);
   const [startExIdx, setStartExIdx] = useState(0);
+
+  // Persist current screen position so phone lock/reload restores state
+  function savePosition(screen, day = null, exIdx = 0) {
+    try {
+      localStorage.setItem("fitness_position", JSON.stringify({
+        screen, dayId: day?.id || null, exIdx, ts: Date.now()
+      }));
+    } catch {}
+  }
+
+  function restorePosition(loadedDays) {
+    try {
+      const saved = JSON.parse(localStorage.getItem("fitness_position") || "{}");
+      // Only restore if saved less than 4 hours ago
+      if (!saved.screen || Date.now() - saved.ts > 4 * 60 * 60 * 1000) return;
+      if (saved.screen === "exercise" || saved.screen === "day") {
+        const day = loadedDays.find(d => d.id === saved.dayId);
+        if (day) {
+          setSelectedDay(day);
+          setStartExIdx(saved.exIdx || 0);
+          setAppScreen(saved.screen);
+        }
+      }
+    } catch {}
+  }
+
+  // Wrapped setAppScreen that also saves position
+  function goToScreen(screen, day = null, exIdx = 0) {
+    setAppScreen(screen);
+    savePosition(screen, day, exIdx);
+  }
 
   useEffect(() => {
     sb.auth.getSession().then(({ data }) => { setSession(data.session); if (!data.session) setLoading(false); });
@@ -1065,12 +1102,14 @@ export default function App() {
     }
 
     // Rutina estándar desde Supabase o fallback local
-    setDays((daysData || DEFAULT_DAYS).map(d => ({
+    const loadedDays = (daysData || DEFAULT_DAYS).map(d => ({
       ...d,
       exercises: (d.exercises || []).sort((a, b) => a.orden - b.orden)
-    })));
+    }));
+    setDays(loadedDays);
     if (logsData) setLogs(logsData);
     setLoading(false);
+    restorePosition(loadedDays);
   }
 
   async function saveAIRoutine(routine) {
@@ -1182,9 +1221,9 @@ export default function App() {
               <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>¡Sigue así, no rompas la racha!</div>
             </div>
           )}
-          <button style={S.btnPrimary(color)} onClick={() => { setAppScreen("home"); setSelectedDay(null); }}>Volver al inicio</button>
+          <button style={S.btnPrimary(color)} onClick={() => { goToScreen("home"); setSelectedDay(null); localStorage.removeItem("fitness_position"); }}>Volver al inicio</button>
           <div style={{ height: 12 }} />
-          <button style={{ ...S.btnGhost, color: "#555", borderColor: "#222" }} onClick={() => setAppScreen("day")}>Ver resumen del día</button>
+          <button style={{ ...S.btnGhost, color: "#555", borderColor: "#222" }} onClick={() => goToScreen("day", selectedDay)}>Ver resumen del día</button>
         </div>
       </div>
     );
@@ -1194,7 +1233,7 @@ export default function App() {
     <ExerciseScreen
       day={selectedDay}
       startIdx={startExIdx}
-      onBack={() => setAppScreen("day")}
+      onBack={() => goToScreen("day", selectedDay)}
       logs={logs}
       onToggle={upsertLog}
       onWeightChange={handleWeightChange}
@@ -1203,7 +1242,8 @@ export default function App() {
         const ex = logs.find(l => l.exercise_id === exerciseId && l.fecha === today);
         upsertLog(exerciseId, ex?.completado || false, ex?.peso_usado || 0, ex?.series_completadas, nota);
       }}
-      onAllDone={() => setAppScreen("summary")}
+      onAllDone={() => goToScreen("summary", selectedDay)}
+      onIndexChange={i => savePosition("exercise", selectedDay, i)}
       profile={profile}
       onReplaceExercise={(exIdx, newEx) => {
         const updatedDay = { ...selectedDay, exercises: selectedDay.exercises.map((e, i) => i === exIdx ? newEx : e) };
@@ -1223,17 +1263,17 @@ export default function App() {
   );
 
   if (appScreen === "day" && selectedDay) return (
-    <DayScreen day={selectedDay} onBack={() => { setAppScreen("home"); setSelectedDay(null); }}
-      onSelectExercise={i => { setStartExIdx(i); setAppScreen("exercise"); }}
+    <DayScreen day={selectedDay} onBack={() => { goToScreen("home"); setSelectedDay(null); localStorage.removeItem("fitness_position"); }}
+      onSelectExercise={i => { setStartExIdx(i); goToScreen("exercise", selectedDay, i); }}
       logs={logs} onToggle={upsertLog} onWeightChange={handleWeightChange} />
   );
 
   return (
     <HomeScreen user={session.user} profile={profile} days={days} logs={logs} streak={streak}
-      onSelectDay={d => { setSelectedDay(d); setAppScreen("day"); }}
-      onLogout={() => sb.auth.signOut()}
-      onEditProfile={() => setAppScreen("profile")}
-      onRegenerateRoutine={() => setAppScreen("aiRoutine")}
+      onSelectDay={d => { setSelectedDay(d); goToScreen("day", d); }}
+      onLogout={() => { sb.auth.signOut(); localStorage.removeItem("fitness_position"); }}
+      onEditProfile={() => goToScreen("profile")}
+      onRegenerateRoutine={() => goToScreen("aiRoutine")}
     />
   );
 }
