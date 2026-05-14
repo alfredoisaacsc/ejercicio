@@ -621,26 +621,14 @@ function MediaFallback({ exNombre, exId, color, userId }) {
         return;
       }
 
-      // 2. Ask Claude
+      // 2. Search YouTube Data API v3
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-5",
-            max_tokens: 20,
-            system: "Responde SOLO con el ID de YouTube (exactamente 11 caracteres alfanuméricos, sin espacios ni guiones extras). Si no conoces uno real y válido, responde exactamente: none",
-            messages: [{ role: "user", content: `ID de YouTube de un video tutorial en español del ejercicio de gimnasio: "${exNombre}". Solo el ID de 11 caracteres.` }]
-          })
-        });
-        const claudeData = await res.json();
-        const id = (claudeData.content?.[0]?.text || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
-        const validId = id && id.length === 11 && id !== "none" ? id : null;
+        const query = encodeURIComponent(`${exNombre} ejercicio tutorial gimnasio`);
+        const ytRes = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&maxResults=1&relevanceLanguage=es&key=${import.meta.env.VITE_YOUTUBE_API_KEY}`
+        );
+        const ytData = await ytRes.json();
+        const validId = ytData.items?.[0]?.id?.videoId || null;
 
         // 3. Save to Supabase
         await sb.from("exercise_videos").upsert({
